@@ -8,6 +8,9 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Claims">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
@@ -119,6 +122,7 @@ a{color:var(--brand)}
 
 <main>
 <div id="prep" class="note" hidden></div>
+<div id="pending" class="note warn" hidden></div>
 <!-- ADD -->
 <section id="tab-add">
   <div class="claimbar"><div><label for="f-folder">Claim folder</label><select id="f-folder" class="claimsel"></select></div><button class="ghost newclaim" type="button">+ New</button></div>
@@ -126,8 +130,8 @@ a{color:var(--brand)}
     <div><label for="f-date">Date</label><input type="date" id="f-date"></div>
     <div><label for="f-type">Expense type</label>
       <select id="f-type">
-        <option>Food</option><option>Ticket</option><option>Auto Charge</option>
-        <option>Room Rent</option><option>Fuel</option><option>Other</option>
+        <option value="Food">Food Expenses</option><option value="Ticket">Travel Fare</option><option value="Auto Charge">Local Conveyance</option>
+        <option value="Room Rent">Accommodation</option><option value="Fuel">Conveyance Allowance – Own Vehicle</option><option value="Other">Miscellaneous Expenses</option>
       </select></div>
   </div>
   <label for="f-project">Project ID</label>
@@ -217,12 +221,13 @@ a{color:var(--brand)}
   </div>
   <div class="list" id="l-items"></div>
   <p style="margin-top:18px"><button class="primary" id="btn-submit" hidden>📤 Submit claim</button></p>
-  <p class="muted" id="submit-hint" hidden>Finalises the claim Excel and moves the claim folder to “Submitted”, where the finance team can pick it up. It is then no longer shown here.</p>
+  <p class="muted" id="submit-hint" hidden>Finalises the claim Excel and moves the claim folder to “Submitted” in your OneDrive. It is then no longer shown here.</p>
 </section>
 
 <!-- SETTINGS -->
 <section id="tab-set" hidden>
   <div class="stack">
+    <div id="ios-hint" class="note" hidden>On iPhone: open this page in <b>Safari</b>, tap <b>Share</b> (the square with an arrow) → <b>Add to Home Screen</b>, then open Claims from the home screen.</div>
     <div>
       <label for="s-client">Microsoft app (client) ID</label>
       <input id="s-client" placeholder="Enter Microsoft app (client) ID" autocomplete="off">
@@ -241,6 +246,7 @@ a{color:var(--brand)}
       <label for="s-name">Your name (default for Names)</label>
       <input id="s-name" placeholder="Enter your name">
     </div>
+
     <div>
 
     </div>
@@ -297,13 +303,21 @@ const LS = {
 const cfg = Object.assign({clientId:'', myName:'', driveId:'', fuelRate:'', dieselRate:'', folderId:'', folderPath:'', projects:[], locations:['Kerala'], lastLocation:'Kerala'}, LS.get('cfg', {}));
 const saveCfg = () => LS.set('cfg', cfg);
 const isFuel = t => t === 'Fuel' || t === 'Petrol' || t === 'Diesel';
+// formal names shown in the app and the Excel (saved lines keep short internal codes)
+const TYPE_LABEL = {'Food':'Food Expenses', 'Ticket':'Travel Fare', 'Auto Charge':'Local Conveyance', 'Room Rent':'Accommodation',
+  'Other':'Miscellaneous Expenses', 'Fuel':'Conveyance Allowance – Own Vehicle'};
+const typeLabel = t => t === 'Petrol' || t === 'Diesel' ? `Conveyance Allowance – Own Vehicle (${t})` : (TYPE_LABEL[t] || t);
 const lastRate = f => f === 'Diesel' ? cfg.dieselRate : cfg.fuelRate;
 function rateHint(){ const f = F('fuel').value, r = lastRate(f); $('#lbl-rate').textContent = f + ' rate today ₹/L'; F('rate').placeholder = r ? 'Enter today’s rate (last ₹' + r + ')' : 'Enter today’s rate'; }
 if(BUILT_IN_CLIENT_ID && !cfg.clientId) cfg.clientId = BUILT_IN_CLIENT_ID;
+if(cfg.driveId){ cfg.driveId = ''; cfg.folderId = ''; cfg.folderPath = ''; cfg.claimFolder = ''; LS.set('cfg', cfg); }   // shared folders no longer supported: choose a folder in your own OneDrive
 const r2 = n => Math.round((+n + Number.EPSILON) * 100) / 100;
 const inr = n => '₹' + (+n || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
 const todayISO = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
 const dmy = iso => iso.split('-').reverse().join('-');
+// last day of the month of a YYYY-MM-DD date, as YYYY-MM-DD
+const monthEnd = iso => { const [y, m] = iso.split('-').map(Number); const d = new Date(Date.UTC(y, m, 0)); return d.toISOString().slice(0, 10); };
+const monthName = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let statusTimer;
 function status(msg, sticky){
@@ -312,8 +326,8 @@ function status(msg, sticky){
 }
 
 /* ---------- Microsoft sign-in + OneDrive (Graph) ---------- */
-// Files.ReadWrite.All: needed to save into a folder someone else (e.g. finance) shared with you
-const SCOPES = ['User.Read', 'Files.ReadWrite.All'];
+// Own OneDrive only: employees can approve this themselves, no admin needed
+const SCOPES = ['User.Read', 'Files.ReadWrite'];
 const D = (drive = cfg.driveId) => drive ? `/drives/${drive}/items` : '/me/drive/items';
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 let pca = null, account = null;
@@ -330,15 +344,20 @@ async function initAuth(){
   account = (res && res.account) || pca.getAllAccounts()[0] || null;
   if(account) pca.setActiveAccount(account);
 }
+function offlineError(){ const e = new Error('No internet connection.'); e.offline = true; return e; }
+const isOffline = e => !!(e && (e.offline || e.name === 'TypeError' || /network|fetch|Failed to fetch|Load failed|endpoints_resolution|no_network/i.test(e.message + ' ' + (e.errorCode || ''))));
 async function token(scopes = SCOPES){
   if(!pca) throw new Error('Add the Microsoft app ID in Settings first.');
+  if(!navigator.onLine) throw offlineError();
   if(!account){ await pca.loginRedirect({scopes}); throw new Error('Opening Microsoft sign-in…'); }
   try{ return (await pca.acquireTokenSilent({scopes, account})).accessToken; }
-  catch(e){ await pca.acquireTokenRedirect({scopes, account}); throw new Error('Opening Microsoft sign-in… After signing in, tap the button again.'); }
+  catch(e){ if(!navigator.onLine || isOffline(e)) throw offlineError(); await pca.acquireTokenRedirect({scopes, account}); throw new Error('Opening Microsoft sign-in… After signing in, tap the button again.'); }
 }
 async function g(path, opt = {}, scopes){
   const t = await token(scopes);
-  const res = await fetch(GRAPH + path, {...opt, headers:{Authorization:'Bearer ' + t, ...(opt.headers || {})}});
+  let res;
+  try{ res = await fetch(GRAPH + path, {...opt, headers:{Authorization:'Bearer ' + t, ...(opt.headers || {})}}); }
+  catch(e){ throw offlineError(); }
   if(!res.ok){
     const err = new Error('OneDrive error ' + res.status);
     err.status = res.status;
@@ -448,7 +467,7 @@ function calc(e, monthEntries){
     return out;
   }
   out.amount = r2(bill);
-  out.note = e.type === 'Room Rent' ? 'Actuals – only when the company could not arrange stay' : 'Actuals as per bill';
+  out.note = e.type === 'Room Rent' ? 'Actuals – only when the company could not arrange accommodation' : 'Actuals as per bill';
   return out;
 }
 
@@ -458,7 +477,7 @@ function buildXlsx(key, m){
   const rows = [H];
   m.entries.forEach(e => {
     const fuel = isFuel(e.type);
-    rows.push([e.line, dmy(e.date), e.project, e.type, e.location, fuel ? e.vehicle : '', fuel ? +e.fuelRate : '', fuel ? +e.km : '',
+    rows.push([e.line, dmy(e.date), e.project, typeLabel(e.type), e.location, fuel ? e.vehicle : '', fuel ? +e.fuelRate : '', fuel ? +e.km : '',
       +e.pax || '', e.names, e.amount, e.photo ? (e.remarks || '') : [e.remarks, 'No bill'].filter(Boolean).join(' – '), e.photo ? 'View bill' : '']);
   });
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -502,7 +521,7 @@ function buildXlsx(key, m){
     ws[A(tr+k,9)].s  = {font:{bold:true, sz:12}, alignment:{horizontal:'right'}, border};
     ws[A(tr+k,10)].s = {font:{bold:true, sz:12}, numFmt:rupee, border};
   }
-  ws['!cols'] = [6,11,34,13,10,9,10,9,7,18,14,36,11].map(w => ({wch:w}));
+  ws['!cols'] = [6,11,34,30,10,9,10,9,7,18,14,36,11].map(w => ({wch:w}));
   ws['!rows'] = [{hpt:30}];
   ws['!autofilter'] = {ref:`A1:M${Math.max(n+1,1)}`};
   const wb = XLSX.utils.book_new();
@@ -837,22 +856,30 @@ function loadTesseract(){
   });
 }
 function clearOcrMarks(){ ['date','bill'].forEach(id => F(id).classList.remove('ocr')); $('#ocr-note').textContent = ''; $('#ocr-raw').hidden = true; }
+// per-pixel greyscale / invert (works on iPhone Safari, which lacks canvas filters)
+function pixels(canvas, fn){
+  const x = canvas.getContext('2d'), id = x.getImageData(0, 0, canvas.width, canvas.height), p = id.data;
+  for(let i = 0; i < p.length; i += 4){ const v = fn(p[i], p[i+1], p[i+2]); p[i] = p[i+1] = p[i+2] = v; }
+  x.putImageData(id, 0, 0);
+}
 async function ocrImage(blob){
   // enlarge small bills and use greyscale with extra contrast, so decimal points are not lost
   const bmp = await createImageBitmap(blob);
   const k = Math.min(2.5, Math.max(1, 2200 / Math.max(bmp.width, bmp.height)));
   const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-  const x = c.getContext('2d'); x.filter = 'grayscale(1)'; x.imageSmoothingQuality = 'high';
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high';
   x.drawImage(bmp, 0, 0, c.width, c.height); bmp.close && bmp.close();
+  pixels(c, (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b);
   return { canvas: c, inverted(){ const c2 = document.createElement('canvas'); c2.width = c.width; c2.height = c.height;
-    const y = c2.getContext('2d'); y.filter = 'invert(1)'; y.drawImage(c, 0, 0); return c2; } };
+    c2.getContext('2d').drawImage(c, 0, 0); pixels(c2, r => 255 - r); return c2; } };
 }
 async function boxTexts(blob, rec){
   // finds solid coloured/dark boxes with text in them (e-tickets, app screens) and reads each box on its own
   try{ await loadCV(); }catch(e){ return ''; }
   const bmp = await createImageBitmap(blob); const W = bmp.width, H = bmp.height;
   const full = document.createElement('canvas'); full.width = W; full.height = H;
-  const fx = full.getContext('2d'); fx.filter = 'grayscale(1)'; fx.drawImage(bmp, 0, 0); bmp.close && bmp.close();
+  full.getContext('2d').drawImage(bmp, 0, 0); bmp.close && bmp.close();
+  pixels(full, (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b);
   const s = Math.min(1, 1000 / Math.max(W, H));
   const small = document.createElement('canvas'); small.width = Math.round(W * s); small.height = Math.round(H * s);
   small.getContext('2d').drawImage(full, 0, 0, small.width, small.height);
@@ -947,8 +974,7 @@ function refreshCalc(){
   const c = calc(e, m ? m.entries : []);
   $('#calc-amt').textContent = inr(c.amount);
   $('#calc-note').textContent = c.note + (e.type === 'Food' && !m && cfg.folderId ? ' · loading that day’s earlier food bills…' : '');
-  const age = Math.floor((new Date(todayISO()) - new Date(e.date)) / 864e5);
-  if(age > 10) c.warn.push(`This expense is ${age} days old. Policy asks for claims within 10 days.`);
+  if(e.date && monthEnd(e.date) < todayISO()) c.warn.push(`This expense is from ${monthName(e.date)}. Claims should be submitted before the end of the month in which the expense was made.`);
   $('#calc-warn').innerHTML = c.warn.map(w => `<div class="note warn">${esc(w)}</div>`).join('');
   return c;
 }
@@ -990,37 +1016,98 @@ $('#btn-save').onclick = async () => {
   if(!isFuel(e.type) && !photoBlob && !confirm('No bill photo attached. Save this line without a bill (e.g. a cash auto fare)?')) return;
 
   saving = true; $('#btn-save').disabled = true;
+  const key = cfg.claimFolder;
   try{
-    const key = cfg.claimFolder;
     if(!key) throw new Error('Choose or create a claim folder at the top of the Add tab.');
-    status('Opening ' + key + ' folder…', true);
-    const m = await loadMonth(key);
-    const c = calc(e, m.entries);
-    const line = m.entries.length + 1;
-    let photo = '', photoUrl = '';
-    if(photoBlob){ status('Uploading bill photo ' + line + '.jpg…', true); photo = line + '.jpg'; photoUrl = (await putFile(m.folderId, photo, photoBlob, 'image/jpeg')).webUrl; }
-    const remarks = e.remarks;
-    const entry = {line, date:e.date, project:e.project, type:e.type, location:e.location, vehicle:e.vehicle, fuelRate:e.fuelRate,
-      km:e.km, pax:e.pax, names:e.names, scope:e.scope, meals:e.meals, bill:isFuel(e.type) ? null : e.bill,
-      amount:c.amount, remarks, photo, photoUrl, saved:new Date().toISOString()};
-    m.entries.push(entry);
-    status('Saving…', true);
-    try{ await renumber(m, key); await saveJson(key); }
-    catch(err){ delete months[key]; throw err; }
-    if(!cfg.projects.includes(e.project)) cfg.projects.unshift(e.project);
-    cfg.projects = cfg.projects.slice(0, 15);
-    if(e.location && !cfg.locations.includes(e.location)) cfg.locations.push(e.location);
-    cfg.lastLocation = e.location || cfg.lastLocation;
-    if(e.type === 'Petrol') cfg.fuelRate = e.fuelRate;
-    if(e.type === 'Diesel') cfg.dieselRate = e.fuelRate;
-    saveCfg(); fillLists();
-    await saveExcel(key);
-    status(`Saved as line ${entry.line} · ${inr(c.amount)}`);
+    rememberInputs(e);
+    if(!navigator.onLine) throw offlineError();
+    const entry = await saveLine(key, e, photoBlob, true);
+    status(`Saved as line ${entry.line} · ${inr(entry.amount)}`);
     resetForm(true);
   }catch(err){
-    status(err.message, true); setTimeout(() => status(''), 7000);
+    if(isOffline(err) && key){
+      try{
+        await queue.add({ key, e, photo: photoBlob || null, at: Date.now() });
+        status('📶 No signal: saved on this phone. It will upload to OneDrive automatically when you are online.');
+        resetForm(true); updatePending();
+      }catch(qe){ status('Could not save offline: ' + qe.message, true); }
+    }else{ status(err.message, true); setTimeout(() => status(''), 7000); }
   }finally{ saving = false; $('#btn-save').disabled = false; }
 };
+
+function rememberInputs(e){
+  if(!cfg.projects.includes(e.project)) cfg.projects.unshift(e.project);
+  cfg.projects = cfg.projects.slice(0, 15);
+  if(e.location && !cfg.locations.includes(e.location)) cfg.locations.push(e.location);
+  cfg.lastLocation = e.location || cfg.lastLocation;
+  if(e.type === 'Petrol') cfg.fuelRate = e.fuelRate;
+  if(e.type === 'Diesel') cfg.dieselRate = e.fuelRate;
+  saveCfg(); fillLists();
+}
+
+// uploads one claim line (photo + data + Excel); used for normal saves and for bills saved offline
+async function saveLine(key, e, blob, show){
+  const say = t => show && status(t, true);
+  say('Opening ' + key + ' folder…');
+  const m = await loadMonth(key);
+  const c = calc(e, m.entries);
+  const line = m.entries.length + 1;
+  let photo = '', photoUrl = '';
+  if(blob){ say('Uploading bill photo ' + line + '.jpg…'); photo = line + '.jpg'; photoUrl = (await putFile(m.folderId, photo, blob, 'image/jpeg')).webUrl; }
+  const entry = {line, date:e.date, project:e.project, type:e.type, location:e.location, vehicle:e.vehicle, fuelRate:e.fuelRate,
+    km:e.km, pax:e.pax, names:e.names, scope:e.scope, meals:e.meals, bill:isFuel(e.type) ? null : e.bill,
+    amount:c.amount, remarks:e.remarks, photo, photoUrl, saved:new Date().toISOString()};
+  m.entries.push(entry);
+  say('Saving…');
+  try{ await renumber(m, key); await saveJson(key); }
+  catch(err){ delete months[key]; throw err; }
+  try{ await saveExcel(key); }
+  catch(err){ staleExcel.add(key); saveStale(); if(!isOffline(err) && show) status(err.message, true); }
+  return entry;
+}
+
+/* ---------- offline queue (IndexedDB on the phone) ---------- */
+const queue = (() => {
+  let dbp;
+  const open = () => dbp || (dbp = new Promise((ok, fail) => {
+    const r = indexedDB.open('claims-offline', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('q', { keyPath: 'id', autoIncrement: true });
+    r.onsuccess = () => ok(r.result); r.onerror = () => fail(r.error);
+  }));
+  const run = async (mode, fn) => { const db = await open(); return new Promise((ok, fail) => {
+    const t = db.transaction('q', mode), req = fn(t.objectStore('q'));
+    t.oncomplete = () => ok(req && req.result); t.onerror = () => fail(t.error); }); };
+  return { add: v => run('readwrite', st => st.add(v)), all: () => run('readonly', st => st.getAll()), del: id => run('readwrite', st => st.delete(id)) };
+})();
+const staleExcel = new Set(LS.get('staleExcel', []));
+const saveStale = () => LS.set('staleExcel', [...staleExcel]);
+let flushing = false;
+async function updatePending(){
+  let n = 0; try{ n = (await queue.all()).length; }catch{}
+  const el = $('#pending');
+  el.hidden = !n;
+  el.textContent = n ? `⏳ ${n} bill${n > 1 ? 's' : ''} saved on this phone, waiting to upload${navigator.onLine ? '…' : ' (no internet)'}` : '';
+  return n;
+}
+async function flushQueue(){
+  if(flushing || !navigator.onLine || !account || !cfg.folderId) return;
+  flushing = true;
+  try{
+    const items = await queue.all();
+    let done = 0;
+    for(const it of items){
+      try{ await saveLine(it.key, it.e, it.photo, false); await queue.del(it.id); done++; }
+      catch(err){ if(!isOffline(err)) status('A bill saved offline could not be uploaded: ' + err.message, true); break; }
+    }
+    for(const key of [...staleExcel]){
+      try{ delete months[key]; await loadMonth(key); await saveExcel(key); staleExcel.delete(key); saveStale(); }catch(err){ if(isOffline(err)) break; }
+    }
+    if(done){ status(`✓ ${done} bill${done > 1 ? 's' : ''} saved offline uploaded to OneDrive.`); if(!$('#tab-list').hidden) renderList(); }
+  }finally{ flushing = false; updatePending(); }
+}
+window.addEventListener('online', () => { updatePending(); flushQueue(); });
+window.addEventListener('offline', updatePending);
+setInterval(flushQueue, 60000);
 
 /* ---------- claims list ---------- */
 async function renderList(){
@@ -1036,18 +1123,20 @@ async function renderList(){
     $('#l-advance').value = m.advance || '';
     $('#t-balance').textContent = inr(total - (+m.advance || 0));
     const oldest = m.entries.reduce((o, e) => !o || e.date < o ? e.date : o, '');
-    const age = oldest ? Math.floor((new Date(todayISO()) - new Date(oldest)) / 864e5) : 0;
-    $('#l-deadline').innerHTML = age > 10
-      ? `<div class="note warn">Oldest expense (${dmy(oldest)}) is ${age} days old. Submit to HR with manager approval within 10 days of the expense.</div>`
-      : oldest ? `<p class="muted">Submit by ${dmy(new Date(new Date(oldest).getTime() + 10*864e5).toISOString().slice(0,10))} (10 days from the oldest expense).</p>` : '';
+    const due = oldest ? monthEnd(oldest) : '', today = todayISO();
+    const left = due ? Math.round((new Date(due) - new Date(today)) / 864e5) : 0;
+    $('#l-deadline').innerHTML = !oldest ? ''
+      : due < today ? `<div class="note warn">Overdue: expenses from ${monthName(oldest)} should have been submitted by ${dmy(due)}. Please submit now.</div>`
+      : left <= 3 ? `<div class="note warn">Submit by ${dmy(due)}: ${left === 0 ? 'today is' : left + (left === 1 ? ' day' : ' days') + ' left until'} the end of the month.</div>`
+      : `<p class="muted">Submit before the end of the month: by ${dmy(due)}.</p>`;
     $('#btn-submit').hidden = $('#submit-hint').hidden = !m.entries.length;
     if(!m.entries.length){ box.innerHTML = '<p class="empty">No claim lines in this claim folder yet. Add one from the Add tab.</p>'; return; }
     box.innerHTML = m.entries.map(e => {
-      const late = Math.floor((new Date(todayISO()) - new Date(e.date)) / 864e5) > 10;
+      const late = monthEnd(e.date) < todayISO();
       const detail = isFuel(e.type) ? `${e.vehicle}, ${e.km} km @ ₹${e.fuelRate}` : (e.names || '');
       return `<div class="item">
         <div class="no">${e.line}</div>
-        <div><div class="what">${esc(e.type)}${late ? '<span class="tag">over 10 days</span>' : ''}</div>
+        <div><div class="what">${esc(typeLabel(e.type))}${late ? '<span class="tag">previous month</span>' : ''}</div>
           <div class="meta">${dmy(e.date)} · ${esc(e.project)}</div>
           <div class="meta">${esc(detail)}${e.remarks ? ' · ' + esc(e.remarks) : ''}${e.photo ? '' : ' · No bill'}</div></div>
         <div><div class="amt ${e.photo ? 'has-bill' : ''}">${inr(e.amount)}</div>
@@ -1060,7 +1149,7 @@ async function renderList(){
 $('#l-items').addEventListener('click', async ev => {
   const line = +ev.target.dataset.del; if(!line) return;
   const key = cfg.claimFolder, m = months[key], e = m.entries[line - 1];
-  if(!confirm(`Delete line ${line} (${e.type}, ${inr(e.amount)})? Later lines and their photos will be renumbered.`)) return;
+  if(!confirm(`Delete line ${line} (${typeLabel(e.type)}, ${inr(e.amount)})? Later lines and their photos will be renumbered.`)) return;
   try{
     status('Deleting…', true);
     if(e.photo) await delFile(m.folderId, e.photo);
@@ -1100,13 +1189,14 @@ $('#btn-submit').onclick = async () => {
   if(submitting) return;
   const key = cfg.claimFolder;
   if(!key){ status('Choose a claim folder first.'); return; }
+  try{ if((await queue.all()).some(q => q.key === key)){ status('Some bills of this claim are still waiting to upload. Go online and try again in a minute.'); return; } }catch{}
   submitting = true; $('#btn-submit').disabled = true;
   try{
     const m = await loadMonth(key);
     if(!m.entries.length){ status('There are no claim lines to submit.'); return; }
     const total = r2(m.entries.reduce((x, e) => x + e.amount, 0)), adv = +m.advance || 0, bal = r2(total - adv);
     const dates = m.entries.map(e => e.date).sort();
-    if(!confirm(`Submit “${key}”?\n\n${m.entries.length} lines, ${dmy(dates[0])} to ${dmy(dates[dates.length - 1])}\nTotal ${inr(total)} · Advance ${inr(adv)} · Balance ${inr(bal)}\n\nThe claim folder will move to “${SUBMITTED}” in OneDrive and will no longer be shown in the app. You can’t add lines to it afterwards.`)) return;
+    if(!confirm(`Submit “${key}”?\n\n${m.entries.length} lines, ${dmy(dates[0])} to ${dmy(dates[dates.length - 1])}\nTotal ${inr(total)} · Advance ${inr(adv)} · Balance ${inr(bal)}\n\nThe claim folder will move to “${SUBMITTED}” in your OneDrive and will no longer be shown in the app. You can’t add lines to it afterwards.`)) return;
 
     status('Updating the claim Excel…', true);
     await renumber(m, key); await saveJson(key); await saveExcel(key);
@@ -1150,12 +1240,9 @@ async function pkRender(){
         .map(x => ({id: x.remoteItem.id, name: x.name, drive: x.remoteItem.parentReference.driveId}));
     }else{
       const j = await (await g(`${D(cur.drive)}/${cur.id}/children?$select=id,name,folder,remoteItem&$top=200`)).json();
-      folders = j.value.filter(x => x.folder || (x.remoteItem && x.remoteItem.folder)).map(x => x.remoteItem
-        ? {id: x.remoteItem.id, name: x.name, drive: x.remoteItem.parentReference.driveId}   // shortcut to a shared folder
-        : {id: x.id, name: x.name, drive: cur.drive || ''});
+      folders = j.value.filter(x => x.folder).map(x => ({id: x.id, name: x.name, drive: ''}));
     }
     folders.sort((a, b) => a.name.localeCompare(b.name));
-    if(cur.id === 'root' && !cur.drive) folders.unshift({id: 'shared', name: 'Shared with me', drive: '', special: true});
     ul.innerHTML = folders.length ? folders.map(f => `<li><button data-id="${f.id}" data-name="${esc(f.name)}" data-drive="${f.drive}">${f.special ? '👥' : f.drive && !cur.drive ? '🔗' : '📁'} ${esc(f.name)}</button></li>`).join('')
       : '<li class="muted" style="padding:14px 16px">No subfolders. Use this folder or create a new one.</li>';
     $('#pk-pick').disabled = $('#pk-new').disabled = cur.id === 'shared';
@@ -1195,8 +1282,12 @@ async function loadClaimFolders(){
   const sels = document.querySelectorAll('.claimsel');
   if(!account || !cfg.folderId){ sels.forEach(x => x.innerHTML = '<option value="">Sign in and choose a main folder first</option>'); return; }
   try{
-    const j = await (await g(`${D()}/${cfg.folderId}/children?$select=id,name,folder,createdDateTime&$top=200`)).json();
-    const names = j.value.filter(x => x.folder && x.name !== SUBMITTED).sort((a, b) => b.createdDateTime.localeCompare(a.createdDateTime)).map(x => x.name);
+    let names;
+    try{
+      const j = await (await g(`${D()}/${cfg.folderId}/children?$select=id,name,folder,createdDateTime&$top=200`)).json();
+      names = j.value.filter(x => x.folder && x.name !== SUBMITTED).sort((a, b) => b.createdDateTime.localeCompare(a.createdDateTime)).map(x => x.name);
+      cfg.folderNames = names;
+    }catch(e){ if(!isOffline(e) || !cfg.folderNames) throw e; names = cfg.folderNames; }   // offline: last known list
     if(cfg.claimFolder && !names.includes(cfg.claimFolder)) cfg.claimFolder = '';
     if(!cfg.claimFolder && names.length) cfg.claimFolder = names[0];
     saveCfg();
@@ -1262,12 +1353,14 @@ async function prepareTools(){
   fillLists();
   F('names').value = cfg.myName; F('location').value = cfg.lastLocation;
   resetForm(false);
+  if(/iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone) $('#ios-hint').hidden = false;
   setTimeout(prepareTools, 1500);
   try{ await initAuth(); }catch(e){ status('Sign-in problem: ' + e.message); }
   renderSettings();
   if(!cfg.clientId || !account || !cfg.folderId){
     document.querySelector('nav button[data-tab="set"]').click();
   } else { await loadClaimFolders(); preloadMonth(); }
+  updatePending(); flushQueue();
 })();
 </script>
 </body>
