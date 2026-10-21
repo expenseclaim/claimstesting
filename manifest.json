@@ -1,0 +1,10 @@
+{
+  "name": "Travel Claims",
+  "short_name": "Claims",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#16423c",
+  "theme_color": "#16423c",
+  "icons": [{"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}]
+}

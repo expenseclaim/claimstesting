@@ -1,0 +1,1274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16423c">
+<title>Travel Claims</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<style>
+:root{
+  --bg:#f3f5f2; --surface:#ffffff; --ink:#16231f; --muted:#5c6b66; --line:#d6ddd9;
+  --brand:#16423c; --brand-ink:#ffffff; --bill:#92d050; --bill-ink:#1d3a07;
+  --warn:#9a5b00; --warn-bg:#fff3dc; --err:#b3261e; --err-bg:#fde7e5;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0f1715;--surface:#18221f;--ink:#e6eeea;--muted:#9db0a9;--line:#2c3a35;
+    --brand:#5fb3a1;--brand-ink:#08201b;--bill:#7fbf45;--bill-ink:#0c1a03;
+    --warn:#f2b44c;--warn-bg:#33270f;--err:#ff8a80;--err-bg:#3a1714;color-scheme:dark}
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{margin:0;min-height:100%}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 "Atkinson Hyperlegible",system-ui,sans-serif;padding-bottom:84px}
+header{background:var(--brand);color:var(--brand-ink);padding:14px 16px 12px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--brand);z-index:10}
+header h1{margin:0;font-size:20px}
+header p{margin:2px 0 0;font-size:13px;opacity:.85}
+main{max-width:640px;margin:0 auto;padding:16px}
+section[hidden]{display:none}
+label{display:block;font-weight:700;font-size:14px;margin:14px 0 4px}
+input,select,textarea{width:100%;font:inherit;padding:11px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid color-mix(in srgb,var(--brand) 45%,transparent);outline-offset:1px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.row label,.row3 label{margin-top:14px}
+button{font:inherit;font-weight:700;border:0;border-radius:8px;padding:12px 16px;cursor:pointer}
+.primary{background:var(--brand);color:var(--brand-ink);width:100%;font-size:17px;padding:15px}
+.ghost{background:transparent;color:var(--brand);border:1.5px solid var(--line)}
+.danger{background:transparent;color:var(--err);border:1.5px solid var(--line);padding:8px 12px}
+.photo{display:flex;gap:12px;align-items:center;margin-top:16px}
+#photo-box{margin-top:12px}
+#photo-box img{display:block;width:100%;max-height:360px;object-fit:contain;background:var(--surface);border-radius:8px;border:1.5px solid var(--line)}
+#photo-box .row button{width:100%;padding:10px 8px;font-size:15px}
+#scan-note{font-size:14px;color:var(--muted);margin-top:6px}
+.amount{margin-top:18px;padding:14px;border-radius:10px;background:var(--surface);border:1.5px solid var(--line)}
+.amount strong{font-size:28px;display:block}
+.amount small{color:var(--muted)}
+.note{padding:10px 12px;border-radius:8px;font-size:14px;margin-top:10px}
+.note.warn{background:var(--warn-bg);color:var(--warn)}
+.note.err{background:var(--err-bg);color:var(--err)}
+#status{position:fixed;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:12px 14px;border-radius:10px;font-size:15px;display:none;z-index:20}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(3,1fr);padding-bottom:env(safe-area-inset-bottom,0px);z-index:6}
+nav button{background:none;color:var(--muted);border-radius:0;padding:14px 4px;font-size:15px}
+nav button[aria-current="page"]{color:var(--brand);box-shadow:inset 0 3px 0 var(--brand)}
+.total{background:var(--surface);border:1.5px solid var(--line);border-radius:10px;padding:16px;margin-top:12px}
+.total .big{font-size:34px;font-weight:700;letter-spacing:-.5px}
+.total dl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:10px 0 0}
+.total dt{color:var(--muted)} .total dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.list{margin-top:16px;border-top:1.5px solid var(--line)}
+.item{display:grid;grid-template-columns:34px 1fr auto;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);align-items:start}
+.item .no{font-weight:700;color:var(--muted);padding-top:2px}
+.item .what{font-weight:700}
+.item .meta{font-size:13px;color:var(--muted)}
+.item .amt{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.item .amt.has-bill{background:var(--bill);color:var(--bill-ink);padding:2px 8px;border-radius:6px}
+.item .act{margin-top:6px;text-align:right}
+.tag{display:inline-block;font-size:12px;padding:1px 6px;border-radius:5px;background:var(--warn-bg);color:var(--warn);margin-left:4px}
+.empty{color:var(--muted);padding:24px 0;text-align:center}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;z-index:30;padding:calc(20px + env(safe-area-inset-top,0px)) 12px 20px}
+.modal .box{background:var(--surface);border-radius:12px;max-width:520px;margin:0 auto;max-height:100%;display:flex;flex-direction:column}
+.modal .head{padding:14px 16px;border-bottom:1px solid var(--line)}
+.modal .head b{display:block}
+.modal ul{list-style:none;margin:0;padding:0;overflow:auto;flex:1}
+.modal li button{width:100%;text-align:left;background:none;color:var(--ink);border-bottom:1px solid var(--line);border-radius:0;font-weight:400}
+.modal .foot{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line);flex-wrap:wrap}
+.modal .foot button{flex:1}
+.muted{color:var(--muted);font-size:14px}
+input.ocr{border-color:var(--bill);box-shadow:0 0 0 3px color-mix(in srgb,var(--bill) 35%,transparent)}
+#ocr-note{font-size:14px;margin-top:8px;color:var(--muted)}
+.photo-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:1}
+.photo-btns button{padding:12px 8px}
+.scanner{position:fixed;inset:0;background:#111;color:#fff;z-index:40;display:flex;flex-direction:column;
+  padding:calc(10px + env(safe-area-inset-top,0px)) 12px calc(12px + env(safe-area-inset-bottom,0px))}
+.scanner[hidden]{display:none}
+.sc-top b{display:block;font-size:17px}
+.sc-top span{font-size:14px;color:#cfd8d5}
+.sc-stage{position:relative;flex:1;margin:12px 0;touch-action:none}
+.sc-stage canvas,.sc-stage svg{position:absolute}
+.sc-stage polygon{fill:rgba(146,208,80,.18);stroke:#92d050;stroke-width:2.5}
+.sc-h{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;border:3px solid #92d050;background:rgba(0,0,0,.35);touch-action:none}
+.sc-modes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.sc-modes button{background:#2a2a2a;color:#fff;padding:10px 4px;font-size:14px}
+.sc-modes button[aria-pressed="true"]{background:#92d050;color:#10230a}
+.sc-actions{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:8px}
+.sc-actions button{padding:13px 6px}
+.sc-actions .sec{background:#2a2a2a;color:#fff}
+.sc-actions .pri{background:#92d050;color:#10230a}
+.sc-actions button:disabled{opacity:.5}
+.claimbar{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
+.claimbar label{margin-top:0}
+.claimbar button{padding:11px 14px}
+.stack>*+*{margin-top:10px}
+a{color:var(--brand)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Travel Claims</h1>
+  <p id="who">Not signed in</p>
+</header>
+
+<main>
+<div id="prep" class="note" hidden></div>
+<!-- ADD -->
+<section id="tab-add">
+  <div class="claimbar"><div><label for="f-folder">Claim folder</label><select id="f-folder" class="claimsel"></select></div><button class="ghost newclaim" type="button">+ New</button></div>
+  <div class="row">
+    <div><label for="f-date">Date</label><input type="date" id="f-date"></div>
+    <div><label for="f-type">Expense type</label>
+      <select id="f-type">
+        <option>Food</option><option>Ticket</option><option>Auto Charge</option>
+        <option>Room Rent</option><option>Fuel</option><option>Other</option>
+      </select></div>
+  </div>
+  <label for="f-project">Project ID</label>
+  <input id="f-project" list="dl-project" autocomplete="off" placeholder="Enter project ID">
+  <datalist id="dl-project"></datalist>
+
+  <div class="row">
+    <div><label for="f-location">Location</label><input id="f-location" list="dl-location" placeholder="Enter location"><datalist id="dl-location"></datalist></div>
+    <div><label for="f-pax">No of pax</label><input type="number" id="f-pax" min="1" value="1" inputmode="numeric" placeholder="Enter no. of people"></div>
+  </div>
+
+  <div id="grp-food">
+    <div class="row">
+      <div><label for="f-scope">Travel area</label>
+        <select id="f-scope"><option value="state">Kerala / nearby districts</option><option value="outside">Outside state</option></select></div>
+      <input type="hidden" id="f-meals" value="1">
+    </div>
+  </div>
+
+  <div id="grp-fuel" hidden>
+    <div class="row">
+      <div><label for="f-fuel">Fuel</label><select id="f-fuel"><option>Petrol</option><option>Diesel</option></select></div>
+      <div><label for="f-vehicle">Vehicle</label><select id="f-vehicle"><option>Bike</option><option>Car</option></select></div>
+    </div>
+    <div class="row">
+      <div><label for="f-rate" id="lbl-rate">Petrol rate today ₹/L</label><input type="number" id="f-rate" step="0.01" inputmode="decimal"></div>
+      <div><label for="f-km">Running km</label><input type="number" id="f-km" step="0.1" inputmode="decimal" placeholder="Enter running km"></div>
+    </div>
+  </div>
+
+  <label for="f-names">Names</label>
+  <input id="f-names" placeholder="Enter names (e.g. Sam, Shymon)">
+
+  <div id="grp-bill">
+    <label for="f-bill">Bill amount (₹)</label>
+    <input type="number" id="f-bill" step="0.01" inputmode="decimal" placeholder="Enter bill amount">
+  </div>
+
+  <label for="f-remarks">Remarks</label>
+  <input id="f-remarks" placeholder="Enter remarks (optional)">
+
+  <div class="photo">
+    <div class="photo-btns">
+      <button class="ghost" id="btn-photo" type="button">📷 Take bill photo</button>
+      <button class="ghost" id="btn-gallery" type="button">🖼️ Choose from gallery</button>
+    </div>
+    <input type="file" id="f-photo" accept="image/*" capture="environment" hidden>
+    <input type="file" id="f-gallery" accept="image/*" hidden>
+  </div>
+  <div id="photo-box" hidden>
+    <img id="f-preview" alt="Scanned bill preview">
+    <div id="scan-note" aria-live="polite"></div>
+    <div class="row" style="margin-top:8px">
+      <button class="ghost" id="btn-adjust" type="button">✂️ Adjust edges</button>
+      <button class="ghost" id="btn-original" type="button">Use original photo</button>
+    </div>
+  </div>
+  <div id="ocr-note" aria-live="polite"></div>
+  <details id="ocr-raw" hidden style="margin-top:6px;font-size:13px"><summary class="muted">Show text read from the bill</summary><pre id="ocr-text" style="white-space:pre-wrap;font-size:12px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px;max-height:220px;overflow:auto"></pre></details>
+
+  <div class="amount" aria-live="polite">
+    <small>Claim amount (final)</small>
+    <strong id="calc-amt">₹0.00</strong>
+    <small id="calc-note"></small>
+  </div>
+  <div id="calc-warn"></div>
+
+  <p><button class="primary" id="btn-save">Save claim line</button></p>
+</section>
+
+<!-- CLAIMS -->
+<section id="tab-list" hidden>
+  <div class="claimbar"><div><label for="l-folder">Claim folder</label><select id="l-folder" class="claimsel"></select></div><button class="ghost newclaim" type="button">+ New</button></div>
+  <div class="total">
+    <div class="muted">Balance to claim</div>
+    <div class="big" id="t-balance">₹0.00</div>
+    <dl>
+      <dt>Total</dt><dd id="t-total">₹0.00</dd>
+      <dt><label for="l-advance" style="margin:0;font-weight:400">Advance</label></dt>
+      <dd><input type="number" id="l-advance" step="0.01" inputmode="decimal" placeholder="Enter advance" style="width:140px;padding:6px 8px;text-align:right"></dd>
+    </dl>
+  </div>
+  <div id="l-deadline"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="ghost" id="btn-rebuild">Rebuild Excel</button>
+    <button class="ghost" id="btn-open">Open Excel</button>
+  </div>
+  <div class="list" id="l-items"></div>
+  <p style="margin-top:18px"><button class="primary" id="btn-submit" hidden>📤 Submit claim</button></p>
+  <p class="muted" id="submit-hint" hidden>Finalises the claim Excel and moves the claim folder to “Submitted”, where the finance team can pick it up. It is then no longer shown here.</p>
+</section>
+
+<!-- SETTINGS -->
+<section id="tab-set" hidden>
+  <div class="stack">
+    <div>
+      <label for="s-client">Microsoft app (client) ID</label>
+      <input id="s-client" placeholder="Enter Microsoft app (client) ID" autocomplete="off">
+      <p class="muted">From your Azure app registration. Needed once.</p>
+    </div>
+    <div class="row">
+      <button class="primary" id="btn-signin" style="font-size:16px">Sign in to OneDrive</button>
+      <button class="ghost" id="btn-signout">Sign out</button>
+    </div>
+    <div>
+      <label>OneDrive folder</label>
+      <p id="s-folder" class="muted">No folder chosen</p>
+      <button class="ghost" id="btn-folder">Choose folder</button>
+    </div>
+    <div>
+      <label for="s-name">Your name (default for Names)</label>
+      <input id="s-name" placeholder="Enter your name">
+    </div>
+    <div>
+
+    </div>
+    <p class="muted">Choose a main folder here. On the Add tab, create one claim folder per trip or claim with “+ New”. Each claim folder gets its own Expense_Claim_&lt;folder name&gt;.xlsx and bill photos named by line number (1.jpg, 2.jpg …), whatever dates you enter.</p>
+  </div>
+</section>
+</main>
+
+<div id="status" role="status"></div>
+
+<nav>
+  <button data-tab="add" aria-current="page">Add</button>
+  <button data-tab="list">Claims</button>
+  <button data-tab="set">Settings</button>
+</nav>
+
+<div class="scanner" id="scanner" hidden>
+  <div class="sc-top"><b>Adjust the bill edges</b><span id="sc-hint"></span></div>
+  <div class="sc-stage" id="sc-stage">
+    <canvas id="sc-canvas"></canvas>
+    <svg id="sc-svg"><polygon id="sc-poly"/></svg>
+    <div class="sc-h"></div><div class="sc-h"></div><div class="sc-h"></div><div class="sc-h"></div>
+  </div>
+  <div class="sc-actions">
+    <button type="button" class="sec" id="sc-cancel">Cancel</button>
+    <button type="button" class="sec" id="sc-asis">Use as is</button>
+    <button type="button" class="pri" id="sc-done">Done</button>
+  </div>
+</div>
+
+<div class="modal" id="picker">
+  <div class="box">
+    <div class="head"><b id="pk-path">OneDrive</b><span class="muted">Tap a folder to open it</span></div>
+    <ul id="pk-list"></ul>
+    <div class="foot">
+      <button class="ghost" id="pk-up">Back</button>
+      <button class="ghost" id="pk-new">New folder</button>
+      <button class="primary" id="pk-pick" style="width:auto">Use this folder</button>
+      <button class="ghost" id="pk-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- SET THIS ONCE: your Azure Application (client) ID, so colleagues don't need to enter it ---------- */
+const BUILT_IN_CLIENT_ID = '757ceeb7-c4d4-4f13-8823-25e8bc87dae7';
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const LS = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} }
+};
+const cfg = Object.assign({clientId:'', myName:'', driveId:'', fuelRate:'', dieselRate:'', folderId:'', folderPath:'', projects:[], locations:['Kerala'], lastLocation:'Kerala'}, LS.get('cfg', {}));
+const saveCfg = () => LS.set('cfg', cfg);
+const isFuel = t => t === 'Fuel' || t === 'Petrol' || t === 'Diesel';
+const lastRate = f => f === 'Diesel' ? cfg.dieselRate : cfg.fuelRate;
+function rateHint(){ const f = F('fuel').value, r = lastRate(f); $('#lbl-rate').textContent = f + ' rate today ₹/L'; F('rate').placeholder = r ? 'Enter today’s rate (last ₹' + r + ')' : 'Enter today’s rate'; }
+if(BUILT_IN_CLIENT_ID && !cfg.clientId) cfg.clientId = BUILT_IN_CLIENT_ID;
+const r2 = n => Math.round((+n + Number.EPSILON) * 100) / 100;
+const inr = n => '₹' + (+n || 0).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+const todayISO = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
+const dmy = iso => iso.split('-').reverse().join('-');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let statusTimer;
+function status(msg, sticky){
+  const el = $('#status'); el.textContent = msg; el.style.display = msg ? 'block' : 'none';
+  clearTimeout(statusTimer); if(msg && !sticky) statusTimer = setTimeout(() => el.style.display = 'none', 4000);
+}
+
+/* ---------- Microsoft sign-in + OneDrive (Graph) ---------- */
+// Files.ReadWrite.All: needed to save into a folder someone else (e.g. finance) shared with you
+const SCOPES = ['User.Read', 'Files.ReadWrite.All'];
+const D = (drive = cfg.driveId) => drive ? `/drives/${drive}/items` : '/me/drive/items';
+const GRAPH = 'https://graph.microsoft.com/v1.0';
+let pca = null, account = null;
+
+async function initAuth(){
+  pca = null; account = null;
+  if(!cfg.clientId) return;
+  pca = new msal.PublicClientApplication({
+    auth:{clientId:cfg.clientId, authority:'https://login.microsoftonline.com/common', redirectUri:location.origin + location.pathname},
+    cache:{cacheLocation:'localStorage'}
+  });
+  await pca.initialize();
+  const res = await pca.handleRedirectPromise();
+  account = (res && res.account) || pca.getAllAccounts()[0] || null;
+  if(account) pca.setActiveAccount(account);
+}
+async function token(scopes = SCOPES){
+  if(!pca) throw new Error('Add the Microsoft app ID in Settings first.');
+  if(!account){ await pca.loginRedirect({scopes}); throw new Error('Opening Microsoft sign-in…'); }
+  try{ return (await pca.acquireTokenSilent({scopes, account})).accessToken; }
+  catch(e){ await pca.acquireTokenRedirect({scopes, account}); throw new Error('Opening Microsoft sign-in… After signing in, tap the button again.'); }
+}
+async function g(path, opt = {}, scopes){
+  const t = await token(scopes);
+  const res = await fetch(GRAPH + path, {...opt, headers:{Authorization:'Bearer ' + t, ...(opt.headers || {})}});
+  if(!res.ok){
+    const err = new Error('OneDrive error ' + res.status);
+    err.status = res.status;
+    try{ const j = await res.json(); if(j.error) err.message += ': ' + j.error.message; }catch{}
+    throw err;
+  }
+  return res;
+}
+const enc = s => encodeURIComponent(s);
+async function ensureFolder(parentId, name, drive = cfg.driveId){
+  try{ return await (await g(`${D(drive)}/${parentId}:/${enc(name)}`)).json(); }
+  catch(e){
+    if(e.status !== 404) throw e;
+    return await (await g(`${D(drive)}/${parentId}/children`, {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name, folder:{}, '@microsoft.graph.conflictBehavior':'fail'})})).json();
+  }
+}
+const putFile = async (fid, name, body, type) =>
+  (await g(`${D()}/${fid}:/${enc(name)}:/content`, {method:'PUT', headers:{'Content-Type':type}, body})).json();
+async function getText(fid, name){
+  try{ return await (await g(`${D()}/${fid}:/${enc(name)}:/content`)).text(); }
+  catch(e){ if(e.status === 404) return null; throw e; }
+}
+async function delFile(fid, name){
+  try{ await g(`${D()}/${fid}:/${enc(name)}`, {method:'DELETE'}); }
+  catch(e){ if(e.status !== 404) throw e; }
+}
+const renameFile = (fid, from, to) =>
+  g(`${D()}/${fid}:/${enc(from)}`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name:to})});
+
+/* ---------- month data (one folder + one Excel per month) ---------- */
+const months = {};
+async function loadMonth(key){
+  if(months[key]) return months[key];
+  if(!cfg.folderId) throw new Error('Choose a OneDrive folder in Settings.');
+  if(!key) throw new Error('Choose or create a claim folder (tap “+ New”).');
+  const f = await ensureFolder(cfg.folderId, key);
+  const txt = await getText(f.id, 'claim-data.json');
+  const m = txt ? JSON.parse(txt) : {entries:[], advance:0};
+  m.folderId = f.id;
+  months[key] = m;
+  // Undo the reduction made by the earlier app version (restore full bill, remove the remark)
+  let fixed = false;
+  m.entries.forEach(e => {
+    const mt = /\s*(?:–\s*)?Capped per policy \(bill ₹([\d,.]+)\)/.exec(e.remarks || '');
+    if(!mt) return;
+    e.amount = r2(e.bill != null ? e.bill : +mt[1].replace(/,/g, ''));
+    e.remarks = e.remarks.replace(mt[0], '').trim();
+    fixed = true;
+  });
+  if(fixed){ await saveJson(key); await saveExcel(key); }
+  return m;
+}
+async function saveJson(key){
+  const m = months[key];
+  await putFile(m.folderId, 'claim-data.json', JSON.stringify(Object.assign({entries:m.entries, advance:m.advance}, m.submitted ? {submitted:m.submitted} : {}), null, 1), 'application/json');
+}
+async function saveExcel(key){
+  const m = months[key];
+  try{
+    const r = await putFile(m.folderId, `Expense_Claim_${key}.xlsx`, buildXlsx(key, m),
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    m.xlsxUrl = r.webUrl;
+  }catch(e){
+    if(e.status === 423 || e.status === 409) throw new Error('Entry saved, but the Excel file is open somewhere. Close it, then tap “Rebuild Excel” on the Claims tab.');
+    throw e;
+  }
+}
+
+/* ---------- keep lines sorted by bill date; Sl. No and photo names follow ---------- */
+async function renumber(m, key){
+  const order = new Map(m.entries.map((e, i) => [e, i]));
+  m.entries.sort((a, b) => a.date !== b.date ? a.date.localeCompare(b.date) : order.get(a) - order.get(b));
+  const moves = [];
+  m.entries.forEach((e, i) => { e.line = i + 1; if(e.photo && e.photo !== e.line + '.jpg') moves.push(e); });
+  if(!moves.length) return;
+  status('Renumbering bill photos…', true);
+  const stamp = Date.now();
+  // two steps so that e.g. 1.jpg and 2.jpg can swap names without clashing
+  for(const e of moves){ const tmp = `tmp-${stamp}-${e.line}.jpg`; await renameFile(m.folderId, e.photo, tmp); e.photo = tmp; }
+  await saveJson(key);
+  for(const e of moves){ const fin = e.line + '.jpg'; const it = await (await renameFile(m.folderId, e.photo, fin)).json(); e.photo = fin; e.photoUrl = it.webUrl; }
+}
+
+/* ---------- reimbursement policy ---------- */
+function calc(e, monthEntries){
+  const pax = Math.max(1, +e.pax || 1);
+  const out = {amount:0, note:'', warn:[], capped:false};
+  if(isFuel(e.type)){
+    const pct = e.vehicle === 'Car' ? 10 : 4;
+    out.amount = r2((+e.fuelRate || 0) * pct / 100 * (+e.km || 0));
+    out.note = `${pct}% of ₹${e.fuelRate || 0}/L × ${e.km || 0} km`;
+    if(e.vehicle === 'Car' && pax < 3) out.warn.push('Four-wheeler rate (10%) is allowed only when more than two employees travel together. Set No of pax to 3 or more, or switch to Bike.');
+    out.warn.push('Fuel allowance is for travel within the district of operation. Outstation travel is reimbursed on actual bills.');
+    return out;
+  }
+  const bill = +e.bill || 0;
+  if(e.type === 'Food'){
+    const outside = e.scope === 'outside';
+    const dayCap = outside ? 700 : 500;
+    const usedPP = monthEntries.filter(x => x.type === 'Food' && x.date === e.date)
+      .reduce((s, x) => s + x.amount / Math.max(1, +x.pax || 1), 0);
+    const dayPP = r2(usedPP + bill / pax);
+    out.amount = r2(bill);
+    out.note = `Food limit: ₹${dayCap}/day per person · this day’s food so far incl. this bill: ₹${dayPP}/person`;
+    if(dayPP > dayCap) out.warn.push(`Food for this day is ₹${dayPP}/person, ₹${r2(dayPP - dayCap)} over the ₹${dayCap}/day limit. The full bill amount will still be claimed.`);
+    return out;
+  }
+  out.amount = r2(bill);
+  out.note = e.type === 'Room Rent' ? 'Actuals – only when the company could not arrange stay' : 'Actuals as per bill';
+  return out;
+}
+
+/* ---------- Excel builder (layout matches your sheet) ---------- */
+function buildXlsx(key, m){
+  const H = ['Sl. No','Date','Project ID','Expense Type','Location','Vehicle Type','Current Fuel Rate','Running Km','No of Pax','Names','Claim Amount (Final)','Remarks','Bill Image'];
+  const rows = [H];
+  m.entries.forEach(e => {
+    const fuel = isFuel(e.type);
+    rows.push([e.line, dmy(e.date), e.project, e.type, e.location, fuel ? e.vehicle : '', fuel ? +e.fuelRate : '', fuel ? +e.km : '',
+      +e.pax || '', e.names, e.amount, e.photo ? (e.remarks || '') : [e.remarks, 'No bill'].filter(Boolean).join(' – '), e.photo ? 'View bill' : '']);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const n = m.entries.length;
+  const total = r2(m.entries.reduce((s, e) => s + e.amount, 0));
+  const adv = +m.advance || 0;
+  const tr = n + 2;                      // one blank row, then totals
+  const A = (r, c) => XLSX.utils.encode_cell({r, c});
+  const thin = {style:'thin', color:{rgb:'000000'}};
+  const border = {top:thin, bottom:thin, left:thin, right:thin};
+  const money = '#,##0.00', rupee = '"₹" #,##0.00';
+
+  ws[A(tr,9)]   = {t:'s', v:'Total'};
+  ws[A(tr,10)]  = n ? {t:'n', v:total, f:`SUM(K2:K${n+1})`} : {t:'n', v:0};
+  ws[A(tr+1,9)] = {t:'s', v:'Advance'};
+  ws[A(tr+1,10)]= {t:'n', v:adv};
+  ws[A(tr+2,9)] = {t:'s', v:'Balance'};
+  ws[A(tr+2,10)]= {t:'n', v:r2(total-adv), f:`K${tr+1}-K${tr+2}`};
+  ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:tr+2, c:12}});
+
+  for(let c = 0; c < 13; c++){
+    ws[A(0,c)].s = {font:{bold:true}, fill:{fgColor:{rgb:'DDEBF7'}}, border, alignment:{horizontal:'center', vertical:'center', wrapText:true}};
+  }
+  m.entries.forEach((e, i) => {
+    const r = i + 1;
+    for(let c = 0; c < 13; c++){
+      const cell = ws[A(r,c)] || (ws[A(r,c)] = {t:'s', v:''});
+      const s = {border, alignment:{vertical:'center', horizontal: c === 0 ? 'center' : undefined}};
+      if(c === 6 || c === 10) s.numFmt = money;
+      if(c === 10 && e.photo) s.fill = {fgColor:{rgb:'92D050'}};
+      if((c === 5 || c === 6 || c === 7) && !isFuel(e.type)) s.fill = {fgColor:{rgb:'D9D9D9'}};
+      cell.s = s;
+    }
+    if(e.photo){
+      const lc = ws[A(r,12)];
+      lc.l = {Target:e.photoUrl || e.photo, Tooltip:'Open bill photo ' + e.photo};
+      lc.s = {border, font:{color:{rgb:'0563C1'}, underline:true}, alignment:{horizontal:'center', vertical:'center'}};
+    }
+  });
+  for(let k = 0; k < 3; k++){
+    ws[A(tr+k,9)].s  = {font:{bold:true, sz:12}, alignment:{horizontal:'right'}, border};
+    ws[A(tr+k,10)].s = {font:{bold:true, sz:12}, numFmt:rupee, border};
+  }
+  ws['!cols'] = [6,11,34,13,10,9,10,9,7,18,14,36,11].map(w => ({wch:w}));
+  ws['!rows'] = [{hpt:30}];
+  ws['!autofilter'] = {ref:`A1:M${Math.max(n+1,1)}`};
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, ('Claim ' + key).replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 31));
+  return new Blob([XLSX.write(wb, {bookType:'xlsx', type:'array'})], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+
+/* ---------- photo ---------- */
+let photoBlob = null;
+async function compress(file){
+  const img = await createImageBitmap(file);
+  const s = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return new Promise(res => c.toBlob(res, 'image/jpeg', 0.82));
+}
+$('#btn-photo').onclick = () => $('#f-photo').click();
+$('#btn-gallery').onclick = () => $('#f-gallery').click();
+/* ---------- document scanner (flatten + clean, like a scanner app) ---------- */
+let cvReady = null;
+function loadCV(){
+  if(cvReady) return cvReady;
+  cvReady = new Promise((ok, fail) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://docs.opencv.org/4.8.0/opencv.js';
+    sc.async = true;
+    sc.onerror = () => { cvReady = null; fail(new Error('Could not load the scanner (check internet).')); };
+    sc.onload = () => {
+      if(window.cv && typeof window.cv.then === 'function' && !window.cv.Mat) window.cv.then(m => { window.cv = m; });
+      const t0 = Date.now();
+      const iv = setInterval(() => {
+        if(window.cv && window.cv.Mat && window.cv.imread){ clearInterval(iv); ok(); }
+        else if(Date.now() - t0 > 90000){ clearInterval(iv); cvReady = null; fail(new Error('The scanner took too long to load.')); }
+      }, 150);
+    };
+    document.head.appendChild(sc);
+  });
+  return cvReady;
+}
+function orderPts(p){
+  const sum = p.map(q => q.x + q.y), diff = p.map(q => q.y - q.x);
+  return [p[sum.indexOf(Math.min(...sum))], p[diff.indexOf(Math.min(...diff))],
+          p[sum.indexOf(Math.max(...sum))], p[diff.indexOf(Math.max(...diff))]];
+}
+function defaultPts(w, h){ const m = 0.04; return [{x:w*m,y:h*m},{x:w*(1-m),y:h*m},{x:w*(1-m),y:h*(1-m)},{x:w*m,y:h*(1-m)}]; }
+function detectCorners(bmp){
+  // Finds the bill paper: tries edge outlines and the bright paper area, then keeps the
+  // 4-corner shape whose inside is clearly brighter than its surroundings (paper vs table).
+  const s = Math.min(1, 640 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  const src = cv.imread(c), gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY); src.delete();
+  cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+  const A = c.width * c.height, cands = [];
+  const rectPts = r => {
+    const a = r.angle * Math.PI / 180, cs = Math.cos(a) / 2, sn = Math.sin(a) / 2, w = r.size.width, h = r.size.height, cx = r.center.x, cy = r.center.y;
+    return [{x: cx - cs*w + sn*h, y: cy - sn*w - cs*h}, {x: cx + cs*w + sn*h, y: cy + sn*w - cs*h},
+            {x: cx + cs*w - sn*h, y: cy + sn*w + cs*h}, {x: cx - cs*w - sn*h, y: cy - sn*w + cs*h}];
+  };
+  const consider = (bin, allowRect) => {
+    const cs = new cv.MatVector(), hi = new cv.Mat();
+    cv.findContours(bin, cs, hi, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+    for(let i = 0; i < cs.size(); i++){
+      const cnt = cs.get(i), area = cv.contourArea(cnt);
+      if(area > A * 0.08 && area < A * 0.97){
+        let q = null; const peri = cv.arcLength(cnt, true);
+        for(const eps of [0.02, 0.03, 0.05, 0.08]){
+          const ap = new cv.Mat(); cv.approxPolyDP(cnt, ap, eps * peri, true);
+          if(ap.rows === 4 && cv.isContourConvex(ap)){ q = []; for(let j = 0; j < 4; j++) q.push({x: ap.data32S[j*2], y: ap.data32S[j*2+1]}); }
+          ap.delete(); if(q) break;
+        }
+        if(!q && allowRect) q = rectPts(cv.minAreaRect(cnt));
+        if(q) cands.push(q);
+      }
+      cnt.delete();
+    }
+    cs.delete(); hi.delete();
+  };
+  const k5 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+  const edges = new cv.Mat(); cv.Canny(gray, edges, 40, 120); cv.dilate(edges, edges, k5); consider(edges, false); edges.delete(); k5.delete();
+  const th = new cv.Mat(), k15 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(15, 15));
+  cv.threshold(gray, th, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU); cv.morphologyEx(th, th, cv.MORPH_CLOSE, k15);
+  consider(th, true); th.delete(); k15.delete();
+  let best = null, bestScore = 15;
+  for(const q of cands){
+    const mask = cv.Mat.zeros(gray.rows, gray.cols, cv.CV_8UC1), inv = new cv.Mat();
+    const pm = cv.matFromArray(4, 1, cv.CV_32SC2, q.flatMap(p => [Math.round(p.x), Math.round(p.y)]));
+    const pv = new cv.MatVector(); pv.push_back(pm);
+    cv.fillPoly(mask, pv, new cv.Scalar(255)); cv.bitwise_not(mask, inv);
+    const score = cv.mean(gray, mask)[0] - cv.mean(gray, inv)[0];
+    if(score > bestScore){ bestScore = score; best = q; }
+    mask.delete(); inv.delete(); pm.delete(); pv.delete();
+  }
+  gray.delete();
+  return best ? {pts: orderPts(best.map(p => ({x: Math.min(bmp.width, Math.max(0, p.x / s)), y: Math.min(bmp.height, Math.max(0, p.y / s))}))), auto: true}
+              : {pts: defaultPts(bmp.width, bmp.height), auto: false};
+}
+function removeShadow(g){
+  const bg = new cv.Mat(), k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(9, 9));
+  cv.dilate(g, bg, k); k.delete();
+  cv.medianBlur(bg, bg, 21);
+  const diff = new cv.Mat(); cv.absdiff(g, bg, diff); bg.delete();
+  cv.bitwise_not(diff, diff);
+  const out = new cv.Mat(); cv.normalize(diff, out, 0, 255, cv.NORM_MINMAX, cv.CV_8U); diff.delete();
+  return out;
+}
+function warpAndClean(bmp, pts, mode){
+  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+  c.getContext('2d').drawImage(bmp, 0, 0);
+  const src = cv.imread(c);
+  const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const [tl, tr, br, bl] = pts;
+  let W = Math.max(d(tl, tr), d(bl, br)), H = Math.max(d(tl, bl), d(tr, br));
+  const k = Math.min(1, 2000 / Math.max(W, H)); W = Math.max(50, Math.round(W * k)); H = Math.max(50, Math.round(H * k));
+  const sm = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
+  const dm = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, W, 0, W, H, 0, H]);
+  const M = cv.getPerspectiveTransform(sm, dm), flat = new cv.Mat();
+  cv.warpPerspective(src, flat, M, new cv.Size(W, H), cv.INTER_LINEAR, cv.BORDER_REPLICATE, new cv.Scalar());
+  src.delete(); sm.delete(); dm.delete(); M.delete();
+  let res = flat;
+  if(mode !== 'original'){
+    const rgb = new cv.Mat(); cv.cvtColor(flat, rgb, cv.COLOR_RGBA2RGB); flat.delete();
+    if(mode === 'bw'){
+      const g = new cv.Mat(); cv.cvtColor(rgb, g, cv.COLOR_RGB2GRAY); rgb.delete();
+      const even = removeShadow(g); g.delete();
+      let bs = Math.max(15, Math.round(Math.min(W, H) / 40)); if(bs % 2 === 0) bs++;
+      res = new cv.Mat(); cv.adaptiveThreshold(even, res, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, bs, 12); even.delete();
+    }else{
+      const ch = new cv.MatVector(), outCh = new cv.MatVector(); cv.split(rgb, ch); rgb.delete();
+      for(let i = 0; i < 3; i++){ const m = ch.get(i), f = removeShadow(m); outCh.push_back(f); m.delete(); f.delete(); }
+      res = new cv.Mat(); cv.merge(outCh, res); ch.delete(); outCh.delete();
+      res.convertTo(res, -1, 1.4, -102);   // darker text, white paper
+    }
+  }
+  const oc = document.createElement('canvas'); cv.imshow(oc, res); res.delete();
+  return new Promise(r => oc.toBlob(r, 'image/jpeg', 0.85));
+}
+function openScanner(blob){
+  return new Promise(async resolve => {
+    const ov = $('#scanner'), stage = $('#sc-stage'), cvs = $('#sc-canvas'), svg = $('#sc-svg'), hint = $('#sc-hint');
+    const handles = [...document.querySelectorAll('.sc-h')];
+    ov.hidden = false; document.body.style.overflow = 'hidden';
+    $('#sc-done').disabled = true; hint.textContent = 'Loading scanner… (first time takes longer)';
+    const bmp = await createImageBitmap(blob);
+    const r = stage.getBoundingClientRect();
+    const sc = Math.min(r.width / bmp.width, r.height / bmp.height);
+    const dw = bmp.width * sc, dh = bmp.height * sc, ox = (r.width - dw) / 2, oy = (r.height - dh) / 2;
+    const box = `left:${ox}px;top:${oy}px;width:${dw}px;height:${dh}px`;
+    cvs.style.cssText = box; svg.style.cssText = box; svg.setAttribute('viewBox', `0 0 ${dw} ${dh}`);
+    const dpr = window.devicePixelRatio || 1;
+    cvs.width = Math.round(dw * dpr); cvs.height = Math.round(dh * dpr);
+    cvs.getContext('2d').drawImage(bmp, 0, 0, cvs.width, cvs.height);
+    let pts = defaultPts(bmp.width, bmp.height), busy = false;
+    const draw = () => {
+      $('#sc-poly').setAttribute('points', pts.map(p => `${p.x * sc},${p.y * sc}`).join(' '));
+      handles.forEach((h, i) => { h.style.left = (ox + pts[i].x * sc) + 'px'; h.style.top = (oy + pts[i].y * sc) + 'px'; });
+    };
+    draw();
+    handles.forEach((h, i) => {
+      h.onpointerdown = e => { h.setPointerCapture(e.pointerId); h.dataset.drag = '1'; };
+      h.onpointerup = h.onpointercancel = () => { delete h.dataset.drag; };
+      h.onpointermove = e => {
+        if(!h.dataset.drag) return;
+        const rr = stage.getBoundingClientRect();
+        pts[i] = { x: Math.min(bmp.width, Math.max(0, (e.clientX - rr.left - ox) / sc)),
+                   y: Math.min(bmp.height, Math.max(0, (e.clientY - rr.top - oy) / sc)) };
+        draw();
+      };
+    });
+    const setMode = m => { cfg.scanMode = m; saveCfg(); document.querySelectorAll('[data-scanmode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.scanmode === m)); };
+    document.querySelectorAll('[data-scanmode]').forEach(b => b.onclick = () => setMode(b.dataset.scanmode));
+    
+    const finish = val => { ov.hidden = true; document.body.style.overflow = ''; bmp.close && bmp.close(); resolve(val); };
+    $('#sc-cancel').onclick = () => { if(!busy) finish(null); };
+    $('#sc-asis').onclick = () => { if(!busy) finish({blob}); };
+    $('#sc-done').onclick = async () => {
+      if(busy) return; busy = true; $('#sc-done').disabled = true; hint.textContent = 'Cropping and straightening…';
+      await new Promise(r => setTimeout(r, 50));
+      try{ finish({blob: await warpAndClean(bmp, orderPts(pts), 'original')}); }
+      catch(e){ busy = false; $('#sc-done').disabled = false; hint.textContent = 'Could not process this photo. Tap “Use as is” instead.'; }
+    };
+    try{
+      await loadCV();
+      if(ov.hidden) return;
+      const det = detectCorners(bmp);
+      pts = det.pts; draw();
+      hint.textContent = det.auto ? 'Bill edges found. Drag the corners to adjust if needed.' : 'Couldn’t find the bill edges. Drag the 4 corners onto the bill corners.';
+      $('#sc-done').disabled = false;
+    }catch(e){ hint.textContent = e.message + ' Tap “Use as is” to keep the photo.'; }
+  });
+}
+
+let photoRaw = null;
+async function autoScan(raw){
+  await loadCV();
+  const bmp = await createImageBitmap(raw);
+  try{
+    const det = detectCorners(bmp);
+    if(!det.auto) return {blob: raw, auto: false};
+    return {blob: await warpAndClean(bmp, det.pts, 'original'), auto: true};
+  }finally{ bmp.close && bmp.close(); }
+}
+function setPhoto(blob, note){
+  photoBlob = blob;
+  $('#f-preview').src = URL.createObjectURL(blob);
+  $('#photo-box').hidden = false;
+  $('#scan-note').textContent = note || '';
+  $('#btn-original').hidden = !photoRaw || blob === photoRaw;
+  $('#btn-photo').textContent = '📷 Retake';
+  readBill(photoRaw || blob);
+}
+$('#btn-adjust').onclick = async () => {
+  if(!photoRaw) return;
+  const r = await openScanner(photoRaw);
+  if(r) setPhoto(r.blob, r.blob === photoRaw ? 'Original photo kept.' : '✓ Edges adjusted and cropped.');
+};
+$('#btn-original').onclick = () => { if(photoRaw) setPhoto(photoRaw, 'Original photo kept (not cropped).'); };
+const onPicked = async ev => {
+  const f = ev.target.files[0]; if(!f) return;
+  status('Preparing photo…', true);
+  try{
+    const raw = await compress(f);
+    photoRaw = raw;
+    status(cfg.prepDone ? 'Cropping the bill…' : 'Cropping the bill… (first time takes longer)', true);
+    let blob = raw, note;
+    try{
+      if(f.type === 'image/png') throw {screenshot: true};
+      const r = await autoScan(raw);
+      blob = r.blob;
+      note = r.auto ? '✓ Bill cropped to the paper and straightened automatically.'
+                    : 'Couldn’t find the bill edges, so the full photo is kept. Tap “Adjust edges” to crop it.';
+    }catch(e){ note = e && e.screenshot ? 'Screenshot kept as it is (not cropped).' : 'Scanner not available right now, so the original photo is kept.'; }
+    status('');
+    setPhoto(blob, note);
+  }catch(e){ status('Could not read that photo. Try again.'); }
+  ev.target.value = '';
+};
+$('#f-photo').onchange = onPicked;
+$('#f-gallery').onchange = onPicked;
+
+/* ---------- read date & amount from bill text ---------- */
+const MONTHS = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+function parseBillDate(text){
+  const t = text.replace(/[Oo](?=\d)|(?<=\d)[Oo]/g, '0');
+  const today = new Date(); const found = [];
+  const push = (d, m, y, idx) => {
+    y = +y; if(y < 100) y += 2000; d = +d; m = +m;
+    if(m < 1 || m > 12 || d < 1 || d > 31 || y < 2020) return;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if(dt.getUTCDate() !== d) return;
+    const age = (today - dt) / 864e5;
+    if(age < -2 || age > 400) return;
+    found.push({iso: dt.toISOString().slice(0,10), idx});
+  };
+  let r;
+  const reYMD = /\b(20\d{2})[\/\-.](\d{1,2})[\/\-.](\d{1,2})\b/g;
+  while((r = reYMD.exec(t))) push(r[3], r[2], r[1], r.index);
+  const reDMY = /\b(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4}|\d{2})(?!\d)/g;
+  while((r = reDMY.exec(t))) push(r[1], r[2], r[3], r.index);
+  const reDMonY = /\b(\d{1,2})(?:st|nd|rd|th)?[\s\-\/.,]*(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*[\s\-\/.,']*(\d{4}|\d{2})(?!\d)/gi;
+  while((r = reDMonY.exec(t))) push(r[1], MONTHS[r[2].toLowerCase()], r[3], r.index);
+  const reMonDY = /\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*[\s\-\/.]*(\d{1,2})(?:st|nd|rd|th)?[\s,\-\/.']*(\d{4})(?!\d)/gi;
+  while((r = reMonDY.exec(t))) push(r[2], MONTHS[r[1].toLowerCase()], r[3], r.index);
+  found.sort((a, b) => a.idx - b.idx);
+  return found.length ? found[0].iso : null;
+}
+function allBillDates(text){
+  const out = []; let t = text;
+  for(let i = 0; i < 6; i++){ const d = parseBillDate(t); if(!d) break; out.push(d); const [y, m, dd] = d.split('-');
+    t = t.split('\n').filter(l => parseBillDate(l) !== d).join('\n'); }
+  return out;
+}
+function parseBillAmount(text){
+  const noDates = t => t.replace(/\b\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}\b/g, ' ').replace(/\b\d{1,2}:\d{2}(:\d{2})?\b/g, ' ');
+  const fixLine = l => noDates(l)
+    .replace(/(?:\b(?:rs|r5|re|inr)|[₹€])\s*[.:\-\/=]*\s*(?=\d)/gi, ' ₹ ')   // Rs. / RS. / Rs: / INR / ₹ → ₹
+    .replace(/(^|\s)[%z]\s*(?=\d)/g, '$1₹ ')                                 // ₹ often misread as % or z
+    .replace(/(\d)\s*[,.]\s*(\d{2})(?![\d,])/g, '$1.$2')                    // 421,00 → 421.00
+    .replace(/(\d)\s+00\b/g, '$1.00')                                       // 421 00 → 421.00
+    .replace(/(\d)\s*,\s*(\d{3})/g, '$1,$2');
+  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  const decimalBill = lines.some(l => /\d\.\d{2}(?!\d)/.test(fixLine(l)));
+  const NUM = /\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?/g;
+  const val = n => { let v = +n.replace(/,/g, ''); if(decimalBill && !/[.,]/.test(n) && n.length >= 4 && n.endsWith('00')) v /= 100; return v; };
+  const ok = v => v > 0 && v < 200000;
+  const nums = l => (fixLine(l).match(NUM) || []).map(val).filter(ok);
+  const afterRs = l => { const out = [], re = /₹\s*(\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/g; let m; const t = fixLine(l); while((m = re.exec(t))) out.push(val(m[1])); return out.filter(ok); };
+  const strong = /grand\s*total|net\s*(amt|amount|total|payable|pay)|amount\s*payable|total\s*(amt|amount|payable|fare|due)|bill\s*(amt|amount)|amount\s*(paid|due)|to\s*pay|payable|total\s*rs|total\s*inr|total\s*₹/i;
+  const weak = /\btotal\b|\btot\b|\bamount\b|\bamt\b|\bfare\b|\bpaid\b|\bpayment\b/i;
+  const skip = /sub\s*-?\s*total|total\s*(qty|quantity|items?|itms|no)|\bqty\s*:|items?\s*:|fssai|k\.?\s?o\.?\s?t|table\s*no|pax|gstin|phone|ph\s*[:.]|mob|bill\s*no|invoice\s*no|txn|transaction\s*id|ref(erence)?\s*no|upi\s*id|tax\s*%|cgst|sgst|igst|discount|round|tendered|change\s*due|cash\s*paid|balance/i;
+  const best = arr => arr.length ? Math.max(...arr) : null;
+  // amount written after a keyword: same line, or on the next line
+  // all other amounts on the bill (items, sub total …) – used to spot a ₹ sign misread as 7 or 2
+  const others = lines.filter(l => !skip.test(l)).flatMap(l => (fixLine(l).match(/\d+\.\d{2}(?!\d)/g) || []).map(Number)).filter(ok);
+  const fixRupee = (v, raw) => {
+    const M = others.filter(x => x !== v).reduce((m, x) => Math.max(m, x), 0);
+    if(M && /^[72]\d{2,}/.test(raw) && v >= 3 * M){ const w = val(raw.slice(1)); if(w >= 0.9 * M && w <= 1.6 * M) return w; }
+    return v;
+  };
+  const lastNum = l => { const t = fixLine(l); const r = [...t.matchAll(/₹\s*(\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/g)].map(m => m[1]);
+    const raws = r.length ? r : (t.match(NUM) || []);
+    for(let k = raws.length - 1; k >= 0; k--){ const v = fixRupee(val(raws[k]), raws[k]); if(ok(v)) return v; } return null; };
+  const afterKey = re => best(lines.flatMap((l, i) => {
+    if(!re.test(l) || skip.test(l)) return [];
+    let v = lastNum(l);
+    if(v == null && lines[i+1] && !skip.test(lines[i+1])) v = lastNum(lines[i+1]);
+    return v == null ? [] : [v];
+  }));
+  // 1) the largest Total / Grand total / Amount payable / Amount / Amt / Fare … line
+  // 2) any amount written after Rs. / RS. / ₹ (screenshots, tickets, UPI)  3) largest amount with paise
+  const kv = [afterKey(strong), afterKey(weak)].filter(x => x != null);
+  let v = kv.length ? Math.max(...kv) : best(lines.filter(l => !skip.test(l)).flatMap(afterRs));
+  if(v == null) v = best(lines.filter(l => !skip.test(l)).flatMap(l => (fixLine(l).match(/\b\d{1,6}\.\d{2}\b/g) || []).map(Number).filter(ok)));
+  return v == null ? null : Math.round(v * 100) / 100;
+}
+
+let ocrWorker = null, ocrWorkerP = null, ocrRun = 0;
+function getOcrWorker(){
+  if(!ocrWorkerP) ocrWorkerP = loadTesseract().then(() => Tesseract.createWorker('eng')).then(w => (ocrWorker = w))
+    .catch(e => { ocrWorkerP = null; throw e; });
+  return ocrWorkerP;
+}
+function loadTesseract(){
+  if(window.Tesseract) return Promise.resolve();
+  return new Promise((ok, fail) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    sc.onload = ok; sc.onerror = () => fail(new Error('Could not load the bill reader (check internet).'));
+    document.head.appendChild(sc);
+  });
+}
+function clearOcrMarks(){ ['date','bill'].forEach(id => F(id).classList.remove('ocr')); $('#ocr-note').textContent = ''; $('#ocr-raw').hidden = true; }
+async function ocrImage(blob){
+  // enlarge small bills and use greyscale with extra contrast, so decimal points are not lost
+  const bmp = await createImageBitmap(blob);
+  const k = Math.min(2.5, Math.max(1, 2200 / Math.max(bmp.width, bmp.height)));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  const x = c.getContext('2d'); x.filter = 'grayscale(1)'; x.imageSmoothingQuality = 'high';
+  x.drawImage(bmp, 0, 0, c.width, c.height); bmp.close && bmp.close();
+  return { canvas: c, inverted(){ const c2 = document.createElement('canvas'); c2.width = c.width; c2.height = c.height;
+    const y = c2.getContext('2d'); y.filter = 'invert(1)'; y.drawImage(c, 0, 0); return c2; } };
+}
+async function boxTexts(blob, rec){
+  // finds solid coloured/dark boxes with text in them (e-tickets, app screens) and reads each box on its own
+  try{ await loadCV(); }catch(e){ return ''; }
+  const bmp = await createImageBitmap(blob); const W = bmp.width, H = bmp.height;
+  const full = document.createElement('canvas'); full.width = W; full.height = H;
+  const fx = full.getContext('2d'); fx.filter = 'grayscale(1)'; fx.drawImage(bmp, 0, 0); bmp.close && bmp.close();
+  const s = Math.min(1, 1000 / Math.max(W, H));
+  const small = document.createElement('canvas'); small.width = Math.round(W * s); small.height = Math.round(H * s);
+  small.getContext('2d').drawImage(full, 0, 0, small.width, small.height);
+  const src = cv.imread(small), g = new cv.Mat(), d = new cv.Mat();
+  cv.cvtColor(src, g, cv.COLOR_RGBA2GRAY); src.delete();
+  cv.threshold(g, d, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU); g.delete();
+  const k = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(9, 9)); cv.morphologyEx(d, d, cv.MORPH_CLOSE, k); k.delete();
+  const cs = new cv.MatVector(), hi = new cv.Mat(); cv.findContours(d, cs, hi, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE); d.delete(); hi.delete();
+  const boxes = [];
+  for(let i = 0; i < cs.size(); i++){
+    const c = cs.get(i), r = cv.boundingRect(c), a = cv.contourArea(c); c.delete();
+    if(r.height < small.height * 0.02 || r.height > small.height * 0.15 || r.width < r.height * 1.2 || a < 0.75 * r.width * r.height) continue;
+    boxes.push({x: r.x / s, y: r.y / s, w: r.width / s, h: r.height / s});
+  }
+  cs.delete();
+  boxes.sort((p, q) => p.y - q.y || p.x - q.x);
+  const out = [];
+  for(const b of boxes.slice(0, 12)){
+    const mx = b.w * 0.04, my = b.h * 0.12, cw = Math.max(8, Math.round(b.w - 2 * mx)), ch = Math.max(8, Math.round(b.h - 2 * my)), pad = 15;
+    const t = document.createElement('canvas'); t.width = cw; t.height = ch;
+    const tx = t.getContext('2d'); tx.drawImage(full, b.x + mx, b.y + my, cw, ch, 0, 0, cw, ch);
+    const id = tx.getImageData(0, 0, cw, ch), px = id.data; let sum = 0;
+    for(let j = 0; j < px.length; j += 4) sum += px[j];
+    const invert = sum / (px.length / 4) < 128;
+    let edge = 0, ne = 0;
+    for(let j = 0; j < px.length; j += 4){ if(invert){ px[j] = px[j+1] = px[j+2] = 255 - px[j]; } }
+    for(let xx = 0; xx < cw; xx++){ edge += px[xx * 4] + px[((ch - 1) * cw + xx) * 4]; ne += 2; }
+    tx.putImageData(id, 0, 0);
+    const c = document.createElement('canvas'); c.width = cw + 2 * pad; c.height = ch + 2 * pad;
+    const cx = c.getContext('2d'); const e = Math.round(edge / ne); cx.fillStyle = `rgb(${e},${e},${e})`; cx.fillRect(0, 0, c.width, c.height);
+    cx.drawImage(t, pad, pad);
+    out.push((await rec(c, '7')).trim());
+  }
+  return out.join('\n');
+}
+async function readBill(blob){
+  const run = ++ocrRun;
+  const startDate = F('date').value, startBill = F('bill').value;
+  clearOcrMarks();
+  const note = $('#ocr-note');
+  note.textContent = 'Reading the bill… (first time takes longer). You can keep filling the form.';
+  try{
+    const worker = await getOcrWorker();
+    const img = await ocrImage(blob);
+    const rec = async (canvas, psm) => { await worker.setParameters({ tessedit_pageseg_mode: psm }); return (await worker.recognize(canvas)).data.text; };
+    // pass 1: normal page reading, pass 2: scattered-text reading (catches totals the first pass skips)
+    const A = await rec(img.canvas, '3'); if(run !== ocrRun) return;
+    note.textContent = 'Reading the bill… (second check)';
+    const B = await rec(img.canvas, '11'); if(run !== ocrRun) return;
+    let text = A + '\n' + B, dates = [...allBillDates(B), ...allBillDates(A)], a = parseBillAmount(text);
+    if(a == null || !dates.length){                  // pass 3: text inside coloured boxes (tickets, app screenshots)
+      note.textContent = 'Reading the bill… (checking boxes)';
+      const C = await boxTexts(blob, rec); if(run !== ocrRun) return;
+      text += '\n' + C; dates.push(...allBillDates(C)); a = a ?? parseBillAmount(text);
+    }
+    if(a == null || !dates.length){                  // pass 4: colours flipped (white text on dark screens)
+      const D = await rec(img.inverted(), '3'); if(run !== ocrRun) return;
+      text += '\n' + D; dates.push(...allBillDates(D)); a = a ?? parseBillAmount(text);
+    }
+    const votes = {}; dates.forEach(x => votes[x] = (votes[x] || 0) + 1);
+    let d = dates.length ? dates.slice().sort((x, y) => votes[y] - votes[x])[0] : null;
+    if(isFuel(F('type').value)) a = null;
+    $('#ocr-text').textContent = text; $('#ocr-raw').hidden = false;
+    const got = [];
+    if(d && F('date').value === startDate){ F('date').value = d; F('date').classList.add('ocr'); got.push('date ' + dmy(d)); }
+    if(a != null && !F('bill').value && !startBill){ F('bill').value = a.toFixed(2); F('bill').classList.add('ocr'); got.push('amount ' + inr(a)); }
+    note.textContent = got.length
+      ? 'Read from bill: ' + got.join(', ') + '. Please check before saving.'
+      : 'Could not read the date or amount from this image. Please enter them yourself.';
+    refreshCalc(); preloadMonth();
+  }catch(e){ if(run === ocrRun) note.textContent = e.message; }
+}
+
+/* ---------- add form ---------- */
+const F = id => $('#f-' + id);
+function formEntry(){
+  return {date:F('date').value, project:F('project').value.trim(), type:F('type').value === 'Fuel' ? F('fuel').value : F('type').value, location:F('location').value.trim(),
+    scope:F('scope').value, meals:+F('meals').value || 1, vehicle:F('vehicle').value, fuelRate:+F('rate').value || 0,
+    km:+F('km').value || 0, pax:+F('pax').value || 1, names:F('names').value.trim(), bill:+F('bill').value || 0,
+    remarks:F('remarks').value.trim()};
+}
+function syncTypeFields(){
+  const t = F('type').value;
+  $('#grp-food').hidden = t !== 'Food';
+  $('#grp-fuel').hidden = !isFuel(t);
+  $('#grp-bill').hidden = isFuel(t);
+  rateHint();
+}
+function refreshCalc(){
+  const e = formEntry();
+  const m = months[cfg.claimFolder];
+  const c = calc(e, m ? m.entries : []);
+  $('#calc-amt').textContent = inr(c.amount);
+  $('#calc-note').textContent = c.note + (e.type === 'Food' && !m && cfg.folderId ? ' · loading that day’s earlier food bills…' : '');
+  const age = Math.floor((new Date(todayISO()) - new Date(e.date)) / 864e5);
+  if(age > 10) c.warn.push(`This expense is ${age} days old. Policy asks for claims within 10 days.`);
+  $('#calc-warn').innerHTML = c.warn.map(w => `<div class="note warn">${esc(w)}</div>`).join('');
+  return c;
+}
+function fillLists(){
+  $('#dl-project').innerHTML = cfg.projects.map(p => `<option value="${esc(p)}">`).join('');
+  $('#dl-location').innerHTML = cfg.locations.map(p => `<option value="${esc(p)}">`).join('');
+}
+function resetForm(keepContext){
+  if(!keepContext){ F('date').value = todayISO(); }
+  F('bill').value = ''; F('km').value = ''; F('remarks').value = ''; F('meals').value = 1;
+  F('names').value = F('names').value || cfg.myName;
+  F('rate').value = '';
+  F('location').value = F('location').value || cfg.lastLocation;
+  ocrRun++; clearOcrMarks();
+  photoBlob = null; photoRaw = null; $('#photo-box').hidden = true; $('#f-photo').value = '';
+  $('#btn-photo').textContent = '📷 Take bill photo';
+  syncTypeFields(); refreshCalc();
+}
+async function preloadMonth(){
+  const key = cfg.claimFolder;
+  if(!key || months[key] || !account || !cfg.folderId) return;
+  try{ await loadMonth(key); refreshCalc(); }catch{}
+}
+['date','type','scope','meals','fuel','vehicle','rate','km','pax','bill'].forEach(id => F(id).addEventListener('input', () => { syncTypeFields(); refreshCalc(); }));
+F('date').addEventListener('change', preloadMonth);
+['date','bill'].forEach(id => F(id).addEventListener('input', () => F(id).classList.remove('ocr')));
+F('fuel').addEventListener('change', () => { F('rate').value = ''; rateHint(); refreshCalc(); });
+
+let saving = false;
+$('#btn-save').onclick = async () => {
+  if(saving) return;
+  const e = formEntry();
+  const missing = [];
+  if(!e.date) missing.push('date');
+  if(!e.project) missing.push('Project ID');
+  if(isFuel(e.type) && (!e.fuelRate || !e.km)) missing.push('fuel price and km');
+  if(!isFuel(e.type) && !e.bill) missing.push('bill amount');
+  if(missing.length){ status('Fill in ' + missing.join(', ') + '.'); return; }
+  if(!isFuel(e.type) && !photoBlob && !confirm('No bill photo attached. Save this line without a bill (e.g. a cash auto fare)?')) return;
+
+  saving = true; $('#btn-save').disabled = true;
+  try{
+    const key = cfg.claimFolder;
+    if(!key) throw new Error('Choose or create a claim folder at the top of the Add tab.');
+    status('Opening ' + key + ' folder…', true);
+    const m = await loadMonth(key);
+    const c = calc(e, m.entries);
+    const line = m.entries.length + 1;
+    let photo = '', photoUrl = '';
+    if(photoBlob){ status('Uploading bill photo ' + line + '.jpg…', true); photo = line + '.jpg'; photoUrl = (await putFile(m.folderId, photo, photoBlob, 'image/jpeg')).webUrl; }
+    const remarks = e.remarks;
+    const entry = {line, date:e.date, project:e.project, type:e.type, location:e.location, vehicle:e.vehicle, fuelRate:e.fuelRate,
+      km:e.km, pax:e.pax, names:e.names, scope:e.scope, meals:e.meals, bill:isFuel(e.type) ? null : e.bill,
+      amount:c.amount, remarks, photo, photoUrl, saved:new Date().toISOString()};
+    m.entries.push(entry);
+    status('Saving…', true);
+    try{ await renumber(m, key); await saveJson(key); }
+    catch(err){ delete months[key]; throw err; }
+    if(!cfg.projects.includes(e.project)) cfg.projects.unshift(e.project);
+    cfg.projects = cfg.projects.slice(0, 15);
+    if(e.location && !cfg.locations.includes(e.location)) cfg.locations.push(e.location);
+    cfg.lastLocation = e.location || cfg.lastLocation;
+    if(e.type === 'Petrol') cfg.fuelRate = e.fuelRate;
+    if(e.type === 'Diesel') cfg.dieselRate = e.fuelRate;
+    saveCfg(); fillLists();
+    await saveExcel(key);
+    status(`Saved as line ${entry.line} · ${inr(c.amount)}`);
+    resetForm(true);
+  }catch(err){
+    status(err.message, true); setTimeout(() => status(''), 7000);
+  }finally{ saving = false; $('#btn-save').disabled = false; }
+};
+
+/* ---------- claims list ---------- */
+async function renderList(){
+  const key = cfg.claimFolder;
+  const box = $('#l-items');
+  $('#btn-submit').hidden = $('#submit-hint').hidden = true;
+  if(!account || !cfg.folderId){ box.innerHTML = '<p class="empty">Sign in and choose a OneDrive folder in Settings to see your claims.</p>'; return; }
+  box.innerHTML = '<p class="empty">Loading…</p>';
+  try{
+    const m = await loadMonth(key);
+    const total = r2(m.entries.reduce((s, e) => s + e.amount, 0));
+    $('#t-total').textContent = inr(total);
+    $('#l-advance').value = m.advance || '';
+    $('#t-balance').textContent = inr(total - (+m.advance || 0));
+    const oldest = m.entries.reduce((o, e) => !o || e.date < o ? e.date : o, '');
+    const age = oldest ? Math.floor((new Date(todayISO()) - new Date(oldest)) / 864e5) : 0;
+    $('#l-deadline').innerHTML = age > 10
+      ? `<div class="note warn">Oldest expense (${dmy(oldest)}) is ${age} days old. Submit to HR with manager approval within 10 days of the expense.</div>`
+      : oldest ? `<p class="muted">Submit by ${dmy(new Date(new Date(oldest).getTime() + 10*864e5).toISOString().slice(0,10))} (10 days from the oldest expense).</p>` : '';
+    $('#btn-submit').hidden = $('#submit-hint').hidden = !m.entries.length;
+    if(!m.entries.length){ box.innerHTML = '<p class="empty">No claim lines in this claim folder yet. Add one from the Add tab.</p>'; return; }
+    box.innerHTML = m.entries.map(e => {
+      const late = Math.floor((new Date(todayISO()) - new Date(e.date)) / 864e5) > 10;
+      const detail = isFuel(e.type) ? `${e.vehicle}, ${e.km} km @ ₹${e.fuelRate}` : (e.names || '');
+      return `<div class="item">
+        <div class="no">${e.line}</div>
+        <div><div class="what">${esc(e.type)}${late ? '<span class="tag">over 10 days</span>' : ''}</div>
+          <div class="meta">${dmy(e.date)} · ${esc(e.project)}</div>
+          <div class="meta">${esc(detail)}${e.remarks ? ' · ' + esc(e.remarks) : ''}${e.photo ? '' : ' · No bill'}</div></div>
+        <div><div class="amt ${e.photo ? 'has-bill' : ''}">${inr(e.amount)}</div>
+          <div class="act"><button class="danger" data-del="${e.line}">Delete</button></div></div>
+      </div>`;
+    }).join('');
+  }catch(err){ box.innerHTML = `<div class="note err">${esc(err.message)}</div>`; }
+}
+
+$('#l-items').addEventListener('click', async ev => {
+  const line = +ev.target.dataset.del; if(!line) return;
+  const key = cfg.claimFolder, m = months[key], e = m.entries[line - 1];
+  if(!confirm(`Delete line ${line} (${e.type}, ${inr(e.amount)})? Later lines and their photos will be renumbered.`)) return;
+  try{
+    status('Deleting…', true);
+    if(e.photo) await delFile(m.folderId, e.photo);
+    m.entries.splice(line - 1, 1);
+    await renumber(m, key);
+    await saveJson(key); await saveExcel(key);
+    status('Deleted line ' + line); renderList();
+  }catch(err){ status(err.message); delete months[key]; renderList(); }
+});
+let advTimer;
+$('#l-advance').addEventListener('input', () => {
+  clearTimeout(advTimer);
+  advTimer = setTimeout(async () => {
+    const key = cfg.claimFolder, m = months[key]; if(!m) return;
+    m.advance = +$('#l-advance').value || 0;
+    try{ await saveJson(key); await saveExcel(key); status('Advance updated'); renderList(); }catch(err){ status(err.message); }
+  }, 900);
+});
+$('#btn-rebuild').onclick = async () => {
+  const key = cfg.claimFolder;
+  try{ status('Rebuilding Excel…', true); delete months[key]; const m = await loadMonth(key); await renumber(m, key); await saveJson(key); await saveExcel(key); status('Excel rebuilt'); renderList(); }
+  catch(err){ status(err.message); }
+};
+$('#btn-open').onclick = async () => {
+  const key = cfg.claimFolder;
+  try{
+    const m = await loadMonth(key);
+    if(!m.xlsxUrl){ const it = await (await g(`${D()}/${m.folderId}:/${enc('Expense_Claim_' + key + '.xlsx')}`)).json(); m.xlsxUrl = it.webUrl; }
+    window.open(m.xlsxUrl, '_blank');
+  }catch(err){ status(err.status === 404 ? 'No Excel file for this month yet.' : err.message); }
+};
+
+/* ---------- submit a claim: finalise and move it to Submitted ---------- */
+const SUBMITTED = 'Submitted';
+let submitting = false;
+$('#btn-submit').onclick = async () => {
+  if(submitting) return;
+  const key = cfg.claimFolder;
+  if(!key){ status('Choose a claim folder first.'); return; }
+  submitting = true; $('#btn-submit').disabled = true;
+  try{
+    const m = await loadMonth(key);
+    if(!m.entries.length){ status('There are no claim lines to submit.'); return; }
+    const total = r2(m.entries.reduce((x, e) => x + e.amount, 0)), adv = +m.advance || 0, bal = r2(total - adv);
+    const dates = m.entries.map(e => e.date).sort();
+    if(!confirm(`Submit “${key}”?\n\n${m.entries.length} lines, ${dmy(dates[0])} to ${dmy(dates[dates.length - 1])}\nTotal ${inr(total)} · Advance ${inr(adv)} · Balance ${inr(bal)}\n\nThe claim folder will move to “${SUBMITTED}” in OneDrive and will no longer be shown in the app. You can’t add lines to it afterwards.`)) return;
+
+    status('Updating the claim Excel…', true);
+    await renumber(m, key); await saveJson(key); await saveExcel(key);
+    m.submitted = { at: new Date().toISOString(), total, advance: adv, balance: bal };
+    await saveJson(key);
+
+    status('Moving the folder to “' + SUBMITTED + '”…', true);
+    const sub = await ensureFolder(cfg.folderId, SUBMITTED);
+    await g(`${D()}/${m.folderId}?@microsoft.graph.conflictBehavior=rename`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({parentReference:{id:sub.id}})});
+
+    delete months[key]; cfg.claimFolder = ''; saveCfg();
+    await loadClaimFolders(); renderList(); preloadMonth(); refreshCalc();
+    status(`✓ “${key}” submitted (${inr(bal)}). It is now in the “${SUBMITTED}” folder.`);
+  }catch(err){ status(err.message, true); setTimeout(() => status(''), 8000); }
+  finally{ submitting = false; $('#btn-submit').disabled = false; }
+};
+
+/* ---------- settings + folder picker ---------- */
+function renderSettings(){
+  $('#s-client').value = cfg.clientId; $('#s-name').value = cfg.myName;
+  $('#s-folder').textContent = cfg.folderId ? cfg.folderPath : 'No folder chosen';
+  $('#who').textContent = account ? `${account.username}${cfg.folderPath ? ' · ' + cfg.folderPath : ''}` : 'Not signed in';
+  $('#btn-signin').hidden = !!account; $('#btn-signout').hidden = !account;
+}
+$('#s-client').addEventListener('change', async () => { cfg.clientId = $('#s-client').value.trim(); saveCfg(); await initAuth(); renderSettings(); });
+$('#s-name').addEventListener('change', () => { cfg.myName = $('#s-name').value.trim(); saveCfg(); if(!F('names').value) F('names').value = cfg.myName; });
+$('#btn-signin').onclick = async () => { try{ await token(); renderSettings(); }catch(e){ status(e.message); } };
+$('#btn-signout').onclick = async () => { if(pca && account){ await pca.logoutRedirect({account}); } };
+
+let pkStack = [];
+async function pkRender(){
+  const cur = pkStack[pkStack.length - 1];
+  $('#pk-path').textContent = pkStack.map(x => x.name).join(' › ');
+  $('#pk-up').disabled = pkStack.length < 2;
+  const ul = $('#pk-list'); ul.innerHTML = '<li class="muted" style="padding:14px 16px">Loading…</li>';
+  try{
+    let folders = [];
+    if(cur.id === 'shared'){
+      const j = await (await g('/me/drive/sharedWithMe?$top=200')).json();
+      folders = j.value.filter(x => x.remoteItem && x.remoteItem.folder)
+        .map(x => ({id: x.remoteItem.id, name: x.name, drive: x.remoteItem.parentReference.driveId}));
+    }else{
+      const j = await (await g(`${D(cur.drive)}/${cur.id}/children?$select=id,name,folder,remoteItem&$top=200`)).json();
+      folders = j.value.filter(x => x.folder || (x.remoteItem && x.remoteItem.folder)).map(x => x.remoteItem
+        ? {id: x.remoteItem.id, name: x.name, drive: x.remoteItem.parentReference.driveId}   // shortcut to a shared folder
+        : {id: x.id, name: x.name, drive: cur.drive || ''});
+    }
+    folders.sort((a, b) => a.name.localeCompare(b.name));
+    if(cur.id === 'root' && !cur.drive) folders.unshift({id: 'shared', name: 'Shared with me', drive: '', special: true});
+    ul.innerHTML = folders.length ? folders.map(f => `<li><button data-id="${f.id}" data-name="${esc(f.name)}" data-drive="${f.drive}">${f.special ? '👥' : f.drive && !cur.drive ? '🔗' : '📁'} ${esc(f.name)}</button></li>`).join('')
+      : '<li class="muted" style="padding:14px 16px">No subfolders. Use this folder or create a new one.</li>';
+    $('#pk-pick').disabled = $('#pk-new').disabled = cur.id === 'shared';
+  }catch(e){ ul.innerHTML = `<li class="note err">${esc(e.message)}</li>`; }
+}
+$('#btn-folder').onclick = async () => {
+  try{ await token(); }catch(e){ status(e.message); return; }
+  pkStack = [{id:'root', name:'OneDrive'}]; $('#picker').style.display = 'block'; pkRender();
+};
+$('#pk-list').onclick = ev => { const b = ev.target.closest('button'); if(!b) return; pkStack.push({id:b.dataset.id, name:b.dataset.name, drive:b.dataset.drive}); pkRender(); };
+$('#pk-up').onclick = () => { if(pkStack.length > 1){ pkStack.pop(); pkRender(); } };
+$('#pk-cancel').onclick = () => $('#picker').style.display = 'none';
+$('#pk-new').onclick = async () => {
+  const name = prompt('New folder name', 'Travel Claims'); if(!name) return;
+  const cur = pkStack[pkStack.length - 1];
+  try{ const f = await ensureFolder(cur.id, name.trim(), cur.drive || ''); pkStack.push({id:f.id, name:f.name, drive:cur.drive || ''}); pkRender(); }
+  catch(e){ status(e.message); }
+};
+$('#pk-pick').onclick = async () => {
+  const cur = pkStack[pkStack.length - 1];
+  if(cur.id === 'shared') return;
+  cfg.driveId = cur.drive || '';
+  cfg.folderId = cur.id; cfg.folderPath = pkStack.map(x => x.name).join(' › ');
+  if(cfg.driveId){
+    // shared folder (e.g. from finance): keep each employee's claims in their own subfolder
+    const mine = (cfg.myName || (account && account.name) || (account && account.username) || 'My claims').replace(/[\\/:*?"<>|#%]/g, '-').trim();
+    try{ const f = await ensureFolder(cur.id, mine); cfg.folderId = f.id; cfg.folderPath += ' › ' + f.name; }
+    catch(e){ status('Could not use this shared folder: ' + e.message); return; }
+  }
+  saveCfg();
+  for(const k in months) delete months[k];
+  $('#picker').style.display = 'none'; renderSettings(); status('Folder set: ' + cfg.folderPath); cfg.claimFolder = ''; saveCfg(); loadClaimFolders();
+};
+
+/* ---------- claim folders (one per trip / claim) ---------- */
+async function loadClaimFolders(){
+  const sels = document.querySelectorAll('.claimsel');
+  if(!account || !cfg.folderId){ sels.forEach(x => x.innerHTML = '<option value="">Sign in and choose a main folder first</option>'); return; }
+  try{
+    const j = await (await g(`${D()}/${cfg.folderId}/children?$select=id,name,folder,createdDateTime&$top=200`)).json();
+    const names = j.value.filter(x => x.folder && x.name !== SUBMITTED).sort((a, b) => b.createdDateTime.localeCompare(a.createdDateTime)).map(x => x.name);
+    if(cfg.claimFolder && !names.includes(cfg.claimFolder)) cfg.claimFolder = '';
+    if(!cfg.claimFolder && names.length) cfg.claimFolder = names[0];
+    saveCfg();
+    const html = names.length ? names.map(n => `<option${n === cfg.claimFolder ? ' selected' : ''}>${esc(n)}</option>`).join('')
+                              : '<option value="">No claim folders yet – tap “+ New”</option>';
+    sels.forEach(x => x.innerHTML = html);
+  }catch(e){ status(e.message); }
+}
+document.querySelectorAll('.claimsel').forEach(sel => sel.addEventListener('change', () => {
+  cfg.claimFolder = sel.value; saveCfg();
+  document.querySelectorAll('.claimsel').forEach(x => x.value = cfg.claimFolder);
+  preloadMonth(); refreshCalc();
+  if(!$('#tab-list').hidden) renderList();
+}));
+document.querySelectorAll('.newclaim').forEach(btn => btn.addEventListener('click', async () => {
+  if(!account || !cfg.folderId){ status('Sign in and choose a main folder in Settings first.'); return; }
+  let name = prompt('Name for the new claim folder (e.g. trip or date range)', 'Claim ' + dmy(todayISO()));
+  if(!name) return;
+  name = name.replace(/[\\/:*?"<>|#%]/g, '-').trim();
+  if(!name) return;
+  try{
+    status('Creating folder…', true);
+    await ensureFolder(cfg.folderId, name);
+    cfg.claimFolder = name; saveCfg();
+    await loadClaimFolders(); preloadMonth(); refreshCalc();
+    if(!$('#tab-list').hidden) renderList();
+    status('Claim folder ready: ' + name);
+  }catch(e){ status(e.message); }
+}));
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.removeAttribute('aria-current'));
+  b.setAttribute('aria-current', 'page');
+  ['add','list','set'].forEach(t => $('#tab-' + t).hidden = t !== b.dataset.tab);
+  if(b.dataset.tab === 'list'){ loadClaimFolders().then(renderList); }
+  if(b.dataset.tab === 'set') renderSettings();
+});
+
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+/* ---------- one-time download of the scanner and bill reader ---------- */
+async function prepareTools(){
+  if(cfg.prepDone) return;
+  const el = $('#prep');
+  el.hidden = false;
+  el.textContent = 'Downloading the scanner and bill reader for first use (about 15–20 MB, one time only)…';
+  try{
+    if('serviceWorker' in navigator) await Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(r, 5000))]);
+    await getOcrWorker();
+    el.textContent = 'Bill reader ready. Downloading the scanner…';
+    await loadCV();
+    cfg.prepDone = true; saveCfg();
+    el.textContent = '✓ Scanner and bill reader are ready.';
+    setTimeout(() => el.hidden = true, 4000);
+  }catch(e){
+    el.textContent = 'The one-time download didn’t finish. It will try again next time you open the app.';
+    setTimeout(() => el.hidden = true, 7000);
+  }
+}
+/* ---------- start ---------- */
+(async () => {
+  fillLists();
+  F('names').value = cfg.myName; F('location').value = cfg.lastLocation;
+  resetForm(false);
+  setTimeout(prepareTools, 1500);
+  try{ await initAuth(); }catch(e){ status('Sign-in problem: ' + e.message); }
+  renderSettings();
+  if(!cfg.clientId || !account || !cfg.folderId){
+    document.querySelector('nav button[data-tab="set"]').click();
+  } else { await loadClaimFolders(); preloadMonth(); }
+})();
+</script>
+</body>
+</html>
